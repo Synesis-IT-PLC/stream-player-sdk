@@ -2,10 +2,11 @@ import { createTokenRefreshFunction, requestStreamAccess } from './access';
 import { createHlsConfig as buildHlsConfig } from './hls';
 import { CastApiError, readJson, requestJson, requestSuccess } from './http';
 import { getClientIdFromToken, getEmailFromToken, isJwtExpired } from './jwt';
+import { joinUrl, requireBaseUrl, requirePaths } from './endpoints';
 import {
-  DEFAULT_BASE_URL,
   type ApiResponse,
   type CastClientOptions,
+  type CastClientPaths,
   type CreateHlsConfigOptions,
   type CreateTokenRefreshOptions,
   type LoginRequest,
@@ -13,8 +14,6 @@ import {
   type StatusResponse,
   type StreamKeyRequest,
   type StreamKeyResponse,
-  type StreamListItem,
-  type StreamTitleResponse,
   type TokenRefreshFn,
 } from './types';
 import { getOrCreateViewerId } from './viewer';
@@ -29,18 +28,24 @@ type StoredSession = {
 };
 
 export class CastClient {
-  readonly baseUrl: string;
+  readonly baseUrl: string | undefined;
+  readonly paths: CastClientPaths;
   private token: string | null;
   private readonly persistSession: boolean;
   private readonly sessionStorageKey: string;
   private readonly viewerStorageKey?: string;
 
-  constructor(options: CastClientOptions = {}) {
-    this.baseUrl = (options.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, '');
+  constructor(options: CastClientOptions) {
+    this.paths = requirePaths(options.paths);
+    this.baseUrl = requireBaseUrl(options.baseUrl, this.paths);
     this.persistSession = options.persistSession ?? true;
     this.sessionStorageKey = options.sessionStorageKey || DEFAULT_SESSION_STORAGE_KEY;
     this.viewerStorageKey = options.viewerStorageKey;
     this.token = options.token || (this.persistSession ? loadStoredToken(this.sessionStorageKey) : null);
+  }
+
+  private url(name: keyof CastClientPaths): string {
+    return joinUrl(this.baseUrl, this.paths[name]);
   }
 
   get authToken(): string | null {
@@ -74,7 +79,7 @@ export class CastClient {
       throw new Error('email and password are required');
     }
 
-    const token = await requestJson<string>(`${this.baseUrl}/api/auth/token`, {
+    const token = await requestJson<string>(this.url('token'), {
       body: { email: email.trim(), password },
       fallbackMessage: 'Login failed',
     });
@@ -96,7 +101,7 @@ export class CastClient {
       throw new Error('title is required');
     }
 
-    const data = await requestJson<StreamKeyResponse>(`${this.baseUrl}/api/stream/key`, {
+    const data = await requestJson<StreamKeyResponse>(this.url('streamKey'), {
       token: this.requireToken(),
       body: { title: title.trim() },
       fallbackMessage: 'Could not create stream',
@@ -110,7 +115,7 @@ export class CastClient {
   }
 
   async endStream(streamId: string): Promise<ApiResponse> {
-    return requestSuccess(`${this.baseUrl}/api/stream/end`, {
+    return requestSuccess(this.url('end'), {
       token: this.requireToken(),
       body: { stream_id: streamId },
       fallbackMessage: 'Could not end stream',
@@ -118,7 +123,7 @@ export class CastClient {
   }
 
   async getStatus(streamId: string): Promise<StatusResponse> {
-    const response = await fetch(`${this.baseUrl}/api/stream/status`, {
+    const response = await fetch(this.url('status'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -136,33 +141,9 @@ export class CastClient {
     return body;
   }
 
-  async listStreams(): Promise<StreamListItem[]> {
-    const response = await fetch(`${this.baseUrl}/api/stream/list`, {
-      headers: {
-        Authorization: `Bearer ${this.requireToken()}`,
-      },
-    });
-
-    const body = await readJson(response);
-    if (!response.ok || !Array.isArray(body)) {
-      throw new CastApiError('Could not list streams', response.status);
-    }
-
-    return body as StreamListItem[];
-  }
-
-  async getStreamTitle(streamId: string): Promise<StreamTitleResponse> {
-    const response = await fetch(`${this.baseUrl}/api/streams/${encodeURIComponent(streamId)}/title`);
-    const body = (await readJson(response)) as StreamTitleResponse | null;
-    if (!response.ok || !body?.stream_title) {
-      throw new CastApiError('Could not read stream title', response.status);
-    }
-    return body;
-  }
-
   async requestAccess(streamId: string, viewerId?: string): Promise<AccessTokenDetails> {
     return requestStreamAccess({
-      accessUrl: `${this.baseUrl}/api/stream/access`,
+      accessUrl: this.url('access'),
       streamId,
       authToken: this.requireToken(),
       viewerId,
@@ -173,7 +154,7 @@ export class CastClient {
   createTokenRefreshFunction(options: CreateTokenRefreshOptions): TokenRefreshFn {
     return createTokenRefreshFunction({
       ...options,
-      accessUrl: `${this.baseUrl}/api/stream/access`,
+      accessUrl: this.url('access'),
       authToken: options.authToken || this.requireToken(),
       viewerStorageKey: this.viewerStorageKey,
     });

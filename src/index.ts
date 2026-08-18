@@ -9,12 +9,12 @@ export {
 export { getOrCreateViewerId } from './viewer';
 export { requestStreamAccess, createTokenRefreshFunction } from './access';
 export { appendAuthParams, createSegmentXhrSetup, createHlsConfig } from './hls';
-export { DEFAULT_BASE_URL } from './types';
 export type {
   AccessRequest,
   AccessTokenDetails,
   ApiResponse,
   CastClientOptions,
+  CastClientPaths,
   CreateHlsConfigOptions,
   CreateTokenRefreshOptions,
   DisconnectRequest,
@@ -23,8 +23,6 @@ export type {
   StatusResponse,
   StreamKeyRequest,
   StreamKeyResponse,
-  StreamListItem,
-  StreamTitleResponse,
   TokenRefreshFn,
   TokenRefreshResult,
 } from './types';

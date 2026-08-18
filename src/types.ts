@@ -1,8 +1,22 @@
-export const DEFAULT_BASE_URL = 'https://dev-cast.convay.com/cast';
+/**
+ * Paths (or full URLs) the SDK hits.
+ * Relative paths are joined with `baseUrl`. Absolute `https://…` values are used as-is.
+ */
+export type CastClientPaths = {
+  token: string;
+  streamKey: string;
+  access: string;
+  end: string;
+  status: string;
+};
 
 export type CastClientOptions = {
-  /** CastAPI origin, including any path prefix (e.g. https://dev-cast.convay.com/cast). */
+  /**
+   * Client backend (their API). Required unless every `paths` value is an absolute URL.
+   */
   baseUrl?: string;
+  /** Every endpoint the SDK can call. All keys are required; there are no default paths. */
+  paths: CastClientPaths;
   /** Restore a previously issued JWT. */
   token?: string;
   /** Persist JWT to localStorage. Default true in browsers. */
@@ -11,25 +25,25 @@ export type CastClientOptions = {
   viewerStorageKey?: string;
 };
 
-/** `ApiResponse` envelope used by /api/auth/token, /api/stream/key, /access, /end */
+/** Envelope used by `token`, `streamKey`, `access`, and `end`. */
 export type ApiResponse<T = unknown> = {
   success: boolean;
   message: string;
   data?: T;
 };
 
-/** `AuthRequest` for POST /api/auth/token */
+/** Body for the `token` (login) path. */
 export type LoginRequest = {
   email: string;
   password: string;
 };
 
-/** `StreamKeyRequest` for POST /api/stream/key */
+/** Body for the `streamKey` path. */
 export type StreamKeyRequest = {
   title: string;
 };
 
-/** `StreamKeyResponse` — data of POST /api/stream/key (and body of /force-key) */
+/** `data` from the `streamKey` path. */
 export type StreamKeyResponse = {
   stream_id: string;
   stream_url: string;
@@ -37,43 +51,30 @@ export type StreamKeyResponse = {
   view_url: string;
 };
 
-/** `AccessRequest` for POST /api/stream/access */
+/** Body for the `access` path. */
 export type AccessRequest = {
   stream_id: string;
   viewer_id: string;
 };
 
-/** `AccessTokenDetails` — data of POST /api/stream/access (segment token + expiration) */
+/** `data` from the `access` path (segment token + expiration). */
 export type AccessTokenDetails = {
   token: string;
   expiration: number;
 };
 
-/** `DisconnectRequest` for POST /api/stream/status and /end */
+/** Body for `end` and `status`. */
 export type DisconnectRequest = {
   stream_id: string;
 };
 
 /**
- * `StatusResponse` — body of POST /api/stream/status (not wrapped in ApiResponse).
+ * Body of the `status` path (not wrapped in an envelope).
  * JSON field is `is_live`.
  */
 export type StatusResponse = {
   stream_id: string;
   is_live: boolean;
-};
-
-/** `StreamListItem` — element of GET /api/stream/list (raw array, not ApiResponse) */
-export type StreamListItem = {
-  stream_id: string;
-  title: string;
-  server_id: number;
-  updated_at: string;
-};
-
-/** `StreamTitleResponse` — GET /api/streams/{streamId}/title */
-export type StreamTitleResponse = {
-  stream_title: string;
 };
 
 export type SegmentAuthParams = {
