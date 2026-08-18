@@ -1,4 +1,4 @@
-import { CastApiError, readJson, unwrapEnvelope } from './http';
+import { CastApiError, requestJson } from './http';
 import { getClientIdFromToken } from './jwt';
 import type { AccessTokenDetails, CreateTokenRefreshOptions, TokenRefreshFn } from './types';
 import { getOrCreateViewerId } from './viewer';
@@ -25,27 +25,17 @@ export async function requestStreamAccess(options: {
   }
 
   const viewerId = options.viewerId || getOrCreateViewerId(options.viewerStorageKey);
-  const response = await fetch(options.accessUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${authToken}`,
-    },
-    body: JSON.stringify({ stream_id: streamId, viewer_id: viewerId }),
-  });
-
-  const body = (await readJson(response)) as {
-    success?: boolean;
-    message?: string;
-    data?: { token?: string; expiration?: number };
-  } | null;
 
   try {
-    const data = unwrapEnvelope(body, response, accessFailureMessage(response.status));
+    const data = await requestJson<AccessTokenDetails>(options.accessUrl, {
+      token: authToken,
+      body: { stream_id: streamId, viewer_id: viewerId },
+      fallbackMessage: 'Could not verify stream access. Please try again.',
+    });
     if (!data.token || data.expiration == null) {
       throw new Error('Access granted but no segment token was returned');
     }
-    return { token: data.token, expiration: data.expiration, viewerId };
+    return data;
   } catch (error) {
     if (error instanceof CastApiError) {
       throw new CastApiError(accessFailureMessage(error.status, error.message), error.status);

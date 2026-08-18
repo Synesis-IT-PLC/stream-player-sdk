@@ -7,44 +7,73 @@ export type CastClientOptions = {
   token?: string;
   /** Persist JWT to localStorage. Default true in browsers. */
   persistSession?: boolean;
-  /** Override localStorage key for the auth session. */
   sessionStorageKey?: string;
-  /** Override localStorage key for viewer_id. */
   viewerStorageKey?: string;
 };
 
+/** `ApiResponse` envelope used by /api/auth/token, /api/stream/key, /access, /end */
+export type ApiResponse<T = unknown> = {
+  success: boolean;
+  message: string;
+  data?: T;
+};
+
+/** `AuthRequest` for POST /api/auth/token */
 export type LoginRequest = {
   email: string;
   password: string;
 };
 
-export type CreateStreamRequest = {
+/** `StreamKeyRequest` for POST /api/stream/key */
+export type StreamKeyRequest = {
   title: string;
 };
 
-export type StreamDetails = {
-  streamId: string;
-  ingestUrl: string;
-  streamKey: string;
-  playbackUrl: string;
+/** `StreamKeyResponse` — data of POST /api/stream/key (and body of /force-key) */
+export type StreamKeyResponse = {
+  stream_id: string;
+  stream_url: string;
+  stream_key: string;
+  view_url: string;
 };
 
-export type StreamListItem = {
-  streamId: string;
-  title: string;
-  serverId: number | null;
-  updatedAt: string | null;
+/** `AccessRequest` for POST /api/stream/access */
+export type AccessRequest = {
+  stream_id: string;
+  viewer_id: string;
 };
 
-export type StreamStatus = {
-  streamId: string;
-  isLive: boolean;
-};
-
+/** `AccessTokenDetails` — data of POST /api/stream/access (segment token + expiration) */
 export type AccessTokenDetails = {
   token: string;
   expiration: number;
-  viewerId: string;
+};
+
+/** `DisconnectRequest` for POST /api/stream/status and /end */
+export type DisconnectRequest = {
+  stream_id: string;
+};
+
+/**
+ * `StatusResponse` — body of POST /api/stream/status (not wrapped in ApiResponse).
+ * JSON field is `is_live`.
+ */
+export type StatusResponse = {
+  stream_id: string;
+  is_live: boolean;
+};
+
+/** `StreamListItem` — element of GET /api/stream/list (raw array, not ApiResponse) */
+export type StreamListItem = {
+  stream_id: string;
+  title: string;
+  server_id: number;
+  updated_at: string;
+};
+
+/** `StreamTitleResponse` — GET /api/streams/{streamId}/title */
+export type StreamTitleResponse = {
+  stream_title: string;
 };
 
 export type SegmentAuthParams = {
@@ -72,10 +101,4 @@ export type CreateTokenRefreshOptions = {
 export type CreateHlsConfigOptions = CreateTokenRefreshOptions & {
   playbackUrl: string;
   refreshThreshold?: number;
-};
-
-export type ApiEnvelope<T> = {
-  success?: boolean;
-  message?: string;
-  data?: T;
 };

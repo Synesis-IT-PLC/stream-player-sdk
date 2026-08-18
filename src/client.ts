@@ -4,15 +4,17 @@ import { CastApiError, readJson, requestJson, requestSuccess } from './http';
 import { getClientIdFromToken, getEmailFromToken, isJwtExpired } from './jwt';
 import {
   DEFAULT_BASE_URL,
-  type AccessTokenDetails,
+  type ApiResponse,
   type CastClientOptions,
   type CreateHlsConfigOptions,
-  type CreateStreamRequest,
   type CreateTokenRefreshOptions,
   type LoginRequest,
-  type StreamDetails,
+  type AccessTokenDetails,
+  type StatusResponse,
+  type StreamKeyRequest,
+  type StreamKeyResponse,
   type StreamListItem,
-  type StreamStatus,
+  type StreamTitleResponse,
   type TokenRefreshFn,
 } from './types';
 import { getOrCreateViewerId } from './viewer';
@@ -24,13 +26,6 @@ type StoredSession = {
   token: string;
   email: string;
   savedAt: number;
-};
-
-type StreamKeyPayload = {
-  stream_id?: string;
-  stream_url?: string;
-  stream_key?: string;
-  view_url?: string;
 };
 
 export class CastClient {
@@ -96,12 +91,12 @@ export class CastClient {
     this.setAuthToken(null);
   }
 
-  async createStream({ title }: CreateStreamRequest): Promise<StreamDetails> {
+  async createStream({ title }: StreamKeyRequest): Promise<StreamKeyResponse> {
     if (!title?.trim()) {
       throw new Error('title is required');
     }
 
-    const data = await requestJson<StreamKeyPayload>(`${this.baseUrl}/api/stream/key`, {
+    const data = await requestJson<StreamKeyResponse>(`${this.baseUrl}/api/stream/key`, {
       token: this.requireToken(),
       body: { title: title.trim() },
       fallbackMessage: 'Could not create stream',
@@ -111,23 +106,18 @@ export class CastClient {
       throw new Error('Stream created but response was incomplete');
     }
 
-    return {
-      streamId: data.stream_id,
-      ingestUrl: data.stream_url,
-      streamKey: data.stream_key,
-      playbackUrl: data.view_url,
-    };
+    return data;
   }
 
-  async endStream(streamId: string): Promise<void> {
-    await requestSuccess(`${this.baseUrl}/api/stream/end`, {
+  async endStream(streamId: string): Promise<ApiResponse> {
+    return requestSuccess(`${this.baseUrl}/api/stream/end`, {
       token: this.requireToken(),
       body: { stream_id: streamId },
       fallbackMessage: 'Could not end stream',
     });
   }
 
-  async getStatus(streamId: string): Promise<StreamStatus> {
+  async getStatus(streamId: string): Promise<StatusResponse> {
     const response = await fetch(`${this.baseUrl}/api/stream/status`, {
       method: 'POST',
       headers: {
@@ -137,20 +127,13 @@ export class CastClient {
       body: JSON.stringify({ stream_id: streamId }),
     });
 
-    const body = (await readJson(response)) as {
-      stream_id?: string;
-      is_live?: boolean;
-      is_streaming?: boolean;
-    } | null;
+    const body = (await readJson(response)) as StatusResponse | null;
 
-    if (!response.ok || !body) {
+    if (!response.ok || !body?.stream_id) {
       throw new CastApiError('Could not read stream status', response.status);
     }
 
-    return {
-      streamId: body.stream_id || streamId,
-      isLive: Boolean(body.is_live ?? body.is_streaming),
-    };
+    return body;
   }
 
   async listStreams(): Promise<StreamListItem[]> {
@@ -165,17 +148,16 @@ export class CastClient {
       throw new CastApiError('Could not list streams', response.status);
     }
 
-    return body.map((item: {
-      stream_id?: string;
-      title?: string;
-      server_id?: number;
-      updated_at?: string;
-    }) => ({
-      streamId: item.stream_id || '',
-      title: item.title || '',
-      serverId: item.server_id ?? null,
-      updatedAt: item.updated_at ?? null,
-    }));
+    return body as StreamListItem[];
+  }
+
+  async getStreamTitle(streamId: string): Promise<StreamTitleResponse> {
+    const response = await fetch(`${this.baseUrl}/api/streams/${encodeURIComponent(streamId)}/title`);
+    const body = (await readJson(response)) as StreamTitleResponse | null;
+    if (!response.ok || !body?.stream_title) {
+      throw new CastApiError('Could not read stream title', response.status);
+    }
+    return body;
   }
 
   async requestAccess(streamId: string, viewerId?: string): Promise<AccessTokenDetails> {

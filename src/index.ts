@@ -11,17 +11,20 @@ export { requestStreamAccess, createTokenRefreshFunction } from './access';
 export { appendAuthParams, createSegmentXhrSetup, createHlsConfig } from './hls';
 export { DEFAULT_BASE_URL } from './types';
 export type {
+  AccessRequest,
   AccessTokenDetails,
-  ApiEnvelope,
+  ApiResponse,
   CastClientOptions,
   CreateHlsConfigOptions,
-  CreateStreamRequest,
   CreateTokenRefreshOptions,
+  DisconnectRequest,
   LoginRequest,
   SegmentAuthParams,
-  StreamDetails,
+  StatusResponse,
+  StreamKeyRequest,
+  StreamKeyResponse,
   StreamListItem,
-  StreamStatus,
+  StreamTitleResponse,
   TokenRefreshFn,
   TokenRefreshResult,
 } from './types';

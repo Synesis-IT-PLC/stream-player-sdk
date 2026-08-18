@@ -17,8 +17,8 @@ Playback URLs look like `https://example.com/hls/stream.m3u8`. Do **not** put `s
 | `client_id` | JWT after login | Account that owns the stream |
 | `stream_id` | `/api/stream/key` response | CastAPI stream record; required for access tokens |
 | `viewer_id` | SDK (`localStorage` UUID) | Stable viewer fingerprint for token signing |
-| `playbackUrl` | `/key` field `view_url` | Real HLS playlist URL |
-| `ingestUrl` / `streamKey` | `/key` fields `stream_url` / `stream_key` | OBS / encoder ingest |
+| `view_url` | `/key` field | Real HLS playlist URL (`https://host/hls/stream.m3u8`) |
+| `stream_url` / `stream_key` | `/key` fields | OBS / encoder ingest |
 
 ## Install
 
@@ -49,21 +49,39 @@ await client.login({ email: 'user@example.com', password: 'secret' });
 // client.clientId  <- from the JWT, never from the HLS URL
 
 const stream = await client.createStream({ title: 'My live' });
-// stream.streamId
-// stream.playbackUrl  -> https://host/hls/stream.m3u8
-// stream.ingestUrl + stream.streamKey  -> encoder
+// stream.stream_id
+// stream.view_url   -> https://host/hls/stream.m3u8
+// stream.stream_url + stream.stream_key  -> encoder
 
 const hls = new Hls(
   client.createHlsConfig({
-    streamId: stream.streamId,
-    playbackUrl: stream.playbackUrl,
+    streamId: stream.stream_id,
+    playbackUrl: stream.view_url,
   }),
 );
-hls.loadSource(stream.playbackUrl);
+hls.loadSource(stream.view_url);
 hls.attachMedia(videoElement);
 ```
 
-Point OBS at `ingestUrl` with `streamKey`. The player loads `playbackUrl` unchanged. The SDK calls `/api/stream/access` and refreshes the segment token about 15 seconds before expiry.
+Point OBS at `stream_url` with `stream_key`. The player loads `view_url` unchanged. The SDK calls `/api/stream/access` and refreshes the segment token about 15 seconds before expiry.
+
+## API payloads (as returned by CastAPI)
+
+Envelope (`ApiResponse`) for `/api/auth/token`, `/api/stream/key`, `/api/stream/access`, `/api/stream/end`:
+
+```json
+{ "success": true, "message": "...", "data": {} }
+```
+
+| Endpoint | `data` / body |
+|----------|----------------|
+| `POST /api/auth/token` | JWT string |
+| `POST /api/stream/key` | `{ stream_id, stream_url, stream_key, view_url }` |
+| `POST /api/stream/access` | `{ token, expiration }` |
+| `POST /api/stream/end` | no `data` (success + message only) |
+| `POST /api/stream/status` | `{ stream_id, is_live }` (no envelope) |
+| `GET /api/stream/list` | `[{ stream_id, title, server_id, updated_at }]` (no envelope) |
+| `GET /api/streams/{id}/title` | `{ stream_title }` (no envelope) |
 
 ### Play a stream you already created
 
@@ -85,7 +103,7 @@ const hls = new Hls(
 Use the token refresh callback instead of `createHlsConfig`:
 
 ```js
-const refresh = client.createTokenRefreshFunction({ streamId: stream.streamId });
+const refresh = client.createTokenRefreshFunction({ streamId: stream.stream_id });
 const { segmentToken, segmentExpiry, segmentAuthParams } = await refresh();
 ```
 
@@ -94,10 +112,11 @@ const { segmentToken, segmentExpiry, segmentAuthParams } = await refresh();
 ### Other stream APIs
 
 ```js
-await client.getStatus(stream.streamId);
+await client.getStatus(stream.stream_id);
 await client.listStreams();
-await client.endStream(stream.streamId);
-await client.requestAccess(stream.streamId);
+await client.endStream(stream.stream_id);
+await client.requestAccess(stream.stream_id);
+await client.getStreamTitle(stream.stream_id);
 client.logout();
 ```
 

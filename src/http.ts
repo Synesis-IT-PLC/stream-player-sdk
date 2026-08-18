@@ -1,4 +1,4 @@
-import type { ApiEnvelope } from './types';
+import type { ApiResponse } from './types';
 
 export class CastApiError extends Error {
   readonly status: number;
@@ -20,7 +20,7 @@ export async function readJson(response: Response): Promise<unknown> {
 }
 
 export function unwrapEnvelope<T>(
-  body: ApiEnvelope<T> | null,
+  body: ApiResponse<T> | null,
   response: Response,
   fallbackMessage: string,
 ): T {
@@ -40,7 +40,7 @@ async function sendJson(
     token?: string | null;
     body?: unknown;
   },
-): Promise<{ response: Response; body: ApiEnvelope<unknown> | null }> {
+): Promise<{ response: Response; body: ApiResponse | null }> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -55,7 +55,7 @@ async function sendJson(
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
 
-  const body = (await readJson(response)) as ApiEnvelope<unknown> | null;
+  const body = (await readJson(response)) as ApiResponse | null;
   return { response, body };
 }
 
@@ -69,7 +69,7 @@ export async function requestJson<T>(
   },
 ): Promise<T> {
   const { response, body } = await sendJson(url, options);
-  return unwrapEnvelope(body as ApiEnvelope<T> | null, response, options.fallbackMessage);
+  return unwrapEnvelope(body as ApiResponse<T> | null, response, options.fallbackMessage);
 }
 
 export async function requestSuccess(
@@ -80,9 +80,10 @@ export async function requestSuccess(
     body?: unknown;
     fallbackMessage: string;
   },
-): Promise<void> {
+): Promise<ApiResponse> {
   const { response, body } = await sendJson(url, options);
   if (!response.ok || !body?.success) {
     throw new CastApiError(body?.message || options.fallbackMessage, response.status);
   }
+  return body;
 }
