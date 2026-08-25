@@ -1,8 +1,8 @@
-import type { CastClientPaths } from './types';
+import type { Endpoints } from './types';
 
 const ABSOLUTE_URL = /^https?:\/\//i;
 
-const PATH_KEYS: (keyof CastClientPaths)[] = ['token', 'streamKey', 'access', 'end', 'status'];
+const ENDPOINT_KEYS: (keyof Endpoints)[] = ['token', 'streamKey', 'access', 'end', 'status'];
 
 export function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
@@ -28,26 +28,26 @@ export function joinUrl(baseUrl: string | undefined, path: string): string {
   return `${base}${suffix}`;
 }
 
-export function requirePaths(paths: CastClientPaths | undefined): CastClientPaths {
-  if (!paths) {
-    throw new Error('paths is required. Configure every API path; the SDK has no defaults.');
+export function requireEndpoints(endpoints: Endpoints | undefined): Endpoints {
+  if (!endpoints) {
+    throw new Error('endpoints is required. Configure every API URL; the SDK has no defaults.');
   }
-  for (const key of PATH_KEYS) {
-    const value = paths[key];
+  for (const key of ENDPOINT_KEYS) {
+    const value = endpoints[key];
     if (typeof value !== 'string' || !value.trim()) {
-      throw new Error(`paths.${key} is required`);
+      throw new Error(`endpoints.${key} is required`);
     }
   }
-  return paths;
+  return endpoints;
 }
 
-export function requireBaseUrl(baseUrl: string | undefined, paths: CastClientPaths): string | undefined {
-  const hasRelative = PATH_KEYS.some((key) => !isAbsoluteUrl(paths[key].trim()));
+export function requireBaseUrl(baseUrl: string | undefined, endpoints: Endpoints): string | undefined {
+  const hasRelative = ENDPOINT_KEYS.some((key) => !isAbsoluteUrl(endpoints[key].trim()));
   if (!hasRelative) {
     return baseUrl ? trimTrailingSlash(baseUrl) : undefined;
   }
   if (!baseUrl?.trim()) {
-    throw new Error('baseUrl is required when any path is relative');
+    throw new Error('baseUrl is required when any endpoint is a relative path');
   }
   return trimTrailingSlash(baseUrl.trim());
 }

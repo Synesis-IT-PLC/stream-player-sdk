@@ -8,7 +8,7 @@ It hides three things partners should not have to wire by hand:
 2. Stream creation, which returns `stream_id` and the real playback URL
 3. Segment auth: short-lived tokens plus `stream_id`, `client_id`, and `viewer_id` on `.ts` requests
 
-The SDK does **not** know your host or your routes. You must pass `baseUrl` and every path (or full URLs). There are no CastAPI defaults.
+The SDK does **not** persist the JWT. After `login()`, keep `client.authToken` in your own storage if you need it across reloads, then pass it back as `token` when you construct `CastClient`.
 
 Playback URLs look like `https://example.com/hls/stream.m3u8`. Do **not** put `stream_id` in the path. The SDK keeps `stream_id` next to the JWT `client_id` and attaches both as query params on media segments.
 
@@ -61,7 +61,7 @@ import { CastClient } from '@convay/cast-sdk';
 
 const client = new CastClient({
   baseUrl: 'https://your-backend.example.com',
-  paths: {
+  endpoints: {
     token: '/auth/token',
     streamKey: '/stream/key',
     access: '/stream/access',
@@ -71,7 +71,8 @@ const client = new CastClient({
 });
 
 await client.login({ email: 'user@example.com', password: 'secret' });
-// client.clientId  <- from the JWT, never from the HLS URL
+// client.authToken  <- save this yourself if you need the session later
+// client.clientId   <- from the JWT, never from the HLS URL
 
 const stream = await client.createStream({ title: 'My live' });
 // stream.stream_id
@@ -92,7 +93,7 @@ Relative paths are joined with `baseUrl`. Absolute URLs skip `baseUrl`:
 
 ```js
 new CastClient({
-  paths: {
+  endpoints: {
     token: 'https://auth.example.com/login',
     streamKey: 'https://api.example.com/streams/key',
     access: 'https://api.example.com/streams/access',
@@ -144,15 +145,14 @@ client.logout();
 ```js
 new CastClient({
   baseUrl: 'https://your-backend.example.com',
-  paths: {
+  endpoints: {
     token: '/auth/token',
     streamKey: '/stream/key',
     access: '/stream/access',
     end: '/stream/end',
     status: '/stream/status',
   },
-  token: existingJwt,          // optional restore
-  persistSession: true,        // JWT in localStorage (1 hour)
+  token: existingJwt,          // optional: JWT you stored after login()
 });
 ```
 

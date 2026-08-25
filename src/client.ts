@@ -2,13 +2,13 @@ import { createTokenRefreshFunction, requestStreamAccess } from './access';
 import { createHlsConfig as buildHlsConfig } from './hls';
 import { CastApiError, readJson, requestJson, requestSuccess } from './http';
 import { getClientIdFromToken, getEmailFromToken, isJwtExpired } from './jwt';
-import { joinUrl, requireBaseUrl, requirePaths } from './endpoints';
+import { joinUrl, requireBaseUrl, requireEndpoints } from './endpoints';
 import {
   type ApiResponse,
-  type CastClientOptions,
-  type CastClientPaths,
-  type CreateHlsConfigOptions,
-  type CreateTokenRefreshOptions,
+  type ClientConfig,
+  type Endpoints,
+  type HlsConfigOptions,
+  type TokenRefreshOptions,
   type LoginRequest,
   type AccessTokenDetails,
   type StatusResponse,
@@ -18,34 +18,21 @@ import {
 } from './types';
 import { getOrCreateViewerId } from './viewer';
 
-const DEFAULT_SESSION_STORAGE_KEY = 'cast_sdk:auth_session';
-const AUTH_SESSION_MAX_AGE_MS = 60 * 60 * 1000;
-
-type StoredSession = {
-  token: string;
-  email: string;
-  savedAt: number;
-};
-
 export class CastClient {
   readonly baseUrl: string | undefined;
-  readonly paths: CastClientPaths;
+  readonly endpoints: Endpoints;
   private token: string | null;
-  private readonly persistSession: boolean;
-  private readonly sessionStorageKey: string;
   private readonly viewerStorageKey?: string;
 
-  constructor(options: CastClientOptions) {
-    this.paths = requirePaths(options.paths);
-    this.baseUrl = requireBaseUrl(options.baseUrl, this.paths);
-    this.persistSession = options.persistSession ?? true;
-    this.sessionStorageKey = options.sessionStorageKey || DEFAULT_SESSION_STORAGE_KEY;
-    this.viewerStorageKey = options.viewerStorageKey;
-    this.token = options.token || (this.persistSession ? loadStoredToken(this.sessionStorageKey) : null);
+  constructor(config: ClientConfig) {
+    this.endpoints = requireEndpoints(config.endpoints);
+    this.baseUrl = requireBaseUrl(config.baseUrl, this.endpoints);
+    this.viewerStorageKey = config.viewerStorageKey;
+    this.token = config.token || null;
   }
 
-  private url(name: keyof CastClientPaths): string {
-    return joinUrl(this.baseUrl, this.paths[name]);
+  private url(name: keyof Endpoints): string {
+    return joinUrl(this.baseUrl, this.endpoints[name]);
   }
 
   get authToken(): string | null {
@@ -66,12 +53,6 @@ export class CastClient {
 
   setAuthToken(token: string | null): void {
     this.token = token;
-    if (!this.persistSession) return;
-    if (!token) {
-      clearStoredSession(this.sessionStorageKey);
-      return;
-    }
-    saveStoredSession(this.sessionStorageKey, token);
   }
 
   async login({ email, password }: LoginRequest): Promise<string> {
@@ -151,7 +132,7 @@ export class CastClient {
     });
   }
 
-  createTokenRefreshFunction(options: CreateTokenRefreshOptions): TokenRefreshFn {
+  createTokenRefreshFunction(options: TokenRefreshOptions): TokenRefreshFn {
     return createTokenRefreshFunction({
       ...options,
       accessUrl: this.url('access'),
@@ -160,7 +141,7 @@ export class CastClient {
     });
   }
 
-  createHlsConfig(options: CreateHlsConfigOptions) {
+  createHlsConfig(options: HlsConfigOptions) {
     return buildHlsConfig({
       playbackUrl: options.playbackUrl,
       refreshThreshold: options.refreshThreshold,
@@ -174,7 +155,7 @@ export class CastClient {
 
   private requireToken(): string {
     if (!this.token) {
-      throw new Error('Not authenticated. Call login() first.');
+      throw new Error('Not authenticated. Call login() first or pass token in ClientConfig.');
     }
     if (isJwtExpired(this.token)) {
       this.logout();
@@ -183,44 +164,3 @@ export class CastClient {
     return this.token;
   }
 }
-
-function loadStoredToken(storageKey: string): string | null {
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return null;
-    const session = JSON.parse(raw) as StoredSession;
-    if (!session?.token || !session?.email || typeof session.savedAt !== 'number') {
-      clearStoredSession(storageKey);
-      return null;
-    }
-    if (Date.now() - session.savedAt >= AUTH_SESSION_MAX_AGE_MS || isJwtExpired(session.token)) {
-      clearStoredSession(storageKey);
-      return null;
-    }
-    return session.token;
-  } catch {
-    clearStoredSession(storageKey);
-    return null;
-  }
-}
-
-function saveStoredSession(storageKey: string, token: string): void {
-  const email = getEmailFromToken(token);
-  if (!email) return;
-  try {
-    const session: StoredSession = { token, email, savedAt: Date.now() };
-    localStorage.setItem(storageKey, JSON.stringify(session));
-  } catch {
-    // ignore storage failures
-  }
-}
-
-function clearStoredSession(storageKey: string): void {
-  try {
-    localStorage.removeItem(storageKey);
-  } catch {
-    // ignore
-  }
-}
-
-export { DEFAULT_SESSION_STORAGE_KEY };

@@ -1,8 +1,7 @@
 /**
- * Paths (or full URLs) the SDK hits.
- * Relative paths are joined with `baseUrl`. Absolute `https://…` values are used as-is.
+ * Endpoint URLs the SDK hits.
  */
-export type CastClientPaths = {
+export type Endpoints = {
   token: string;
   streamKey: string;
   access: string;
@@ -10,18 +9,11 @@ export type CastClientPaths = {
   status: string;
 };
 
-export type CastClientOptions = {
-  /**
-   * Client backend (their API). Required unless every `paths` value is an absolute URL.
-   */
+
+export type ClientConfig = {
   baseUrl?: string;
-  /** Every endpoint the SDK can call. All keys are required; there are no default paths. */
-  paths: CastClientPaths;
-  /** Restore a previously issued JWT. */
+  endpoints: Endpoints;
   token?: string;
-  /** Persist JWT to localStorage. Default true in browsers. */
-  persistSession?: boolean;
-  sessionStorageKey?: string;
   viewerStorageKey?: string;
 };
 
@@ -64,14 +56,10 @@ export type AccessTokenDetails = {
 };
 
 /** Body for `end` and `status`. */
-export type DisconnectRequest = {
+export type StreamIdRequest = {
   stream_id: string;
 };
 
-/**
- * Body of the `status` path (not wrapped in an envelope).
- * JSON field is `is_live`.
- */
 export type StatusResponse = {
   stream_id: string;
   is_live: boolean;
@@ -92,14 +80,14 @@ export type TokenRefreshResult = {
 
 export type TokenRefreshFn = () => Promise<TokenRefreshResult>;
 
-export type CreateTokenRefreshOptions = {
+export type TokenRefreshOptions = {
   streamId: string;
   authToken?: string;
   viewerId?: string;
   extraParams?: Record<string, string | number | null | undefined>;
 };
 
-export type CreateHlsConfigOptions = CreateTokenRefreshOptions & {
+export type HlsConfigOptions = TokenRefreshOptions & {
   playbackUrl: string;
   refreshThreshold?: number;
 };

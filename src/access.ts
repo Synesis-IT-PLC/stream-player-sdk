@@ -1,6 +1,6 @@
 import { CastApiError, requestJson } from './http';
 import { getClientIdFromToken } from './jwt';
-import type { AccessTokenDetails, CreateTokenRefreshOptions, TokenRefreshFn } from './types';
+import type { AccessTokenDetails, TokenRefreshOptions, TokenRefreshFn } from './types';
 import { getOrCreateViewerId } from './viewer';
 
 function accessFailureMessage(status: number, message?: string): string {
@@ -44,7 +44,7 @@ export async function requestStreamAccess(options: {
   }
 }
 
-export function createTokenRefreshFunction(options: CreateTokenRefreshOptions & {
+export function createTokenRefreshFunction(options: TokenRefreshOptions & {
   accessUrl: string;
   authToken: string;
   viewerStorageKey?: string;
