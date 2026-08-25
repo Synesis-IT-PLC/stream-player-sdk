@@ -55,13 +55,12 @@ async function refreshTokensIfNeeded(
     return;
   }
 
-  try {
-    const result = await tokenRefresh();
-    tokenState.segmentToken = result.segmentToken;
-    tokenState.segmentExpiry = result.segmentExpiry;
-    tokenState.segmentAuthParams = result.segmentAuthParams || tokenState.segmentAuthParams;
-  } catch (error) {
-    console.error('Token refresh failed:', error);
+  const result = await tokenRefresh();
+  tokenState.segmentToken = result.segmentToken;
+  tokenState.segmentExpiry = result.segmentExpiry;
+  tokenState.segmentAuthParams = result.segmentAuthParams || tokenState.segmentAuthParams;
+  if (!tokenState.segmentToken) {
+    throw new Error('Could not verify stream access. Please try again.');
   }
 }
 

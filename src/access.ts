@@ -96,7 +96,9 @@ export function createTokenRefreshFunction(options: TokenRefreshOptions & {
         segmentToken = res.token;
         segmentExpiry = res.expiration;
       } catch (error) {
-        console.error('Error getting segment access:', error);
+        segmentToken = null;
+        segmentExpiry = 0;
+        throw error;
       }
     }
 
