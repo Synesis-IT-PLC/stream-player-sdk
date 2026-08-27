@@ -1,6 +1,12 @@
 import { CastApiError, requestJson } from './http';
 import { getClientIdFromToken } from './jwt';
-import type { AccessTokenDetails, TokenRefreshOptions, TokenRefreshFn } from './types';
+import { TYPES } from './types';
+import type {
+  AccessTokenDetails,
+  CallbackTokenRefreshOptions,
+  TokenRefreshOptions,
+  TokenRefreshFn,
+} from './types';
 import { getOrCreateViewerId } from './viewer';
 
 function accessFailureMessage(status: number, message?: string): string {
@@ -10,6 +16,12 @@ function accessFailureMessage(status: number, message?: string): string {
   if (status === 404) return 'Stream not found.';
   if (status === 429) return 'Too many requests. Please try again later.';
   return 'Could not verify stream access. Please try again.';
+}
+
+function refreshThresholdWithJitter(): number {
+  const jitterBytes = new Uint32Array(1);
+  crypto.getRandomValues(jitterBytes);
+  return 15 + (jitterBytes[0]! / 0x100000000) * 6 - 3;
 }
 
 export async function requestStreamAccess(options: {
@@ -44,28 +56,23 @@ export async function requestStreamAccess(options: {
   }
 }
 
-export function createTokenRefreshFunction(options: TokenRefreshOptions & {
-  accessUrl: string;
-  authToken: string;
-  viewerStorageKey?: string;
-}): TokenRefreshFn {
-  const jitterBytes = new Uint32Array(1);
-  crypto.getRandomValues(jitterBytes);
-  const segmentRefreshThreshold = 15 + (jitterBytes[0]! / 0x100000000) * 6 - 3;
-
-  const { streamId, authToken, extraParams = {} } = options;
-  if (!streamId || !authToken) {
-    throw new Error('streamId and authToken are required');
+export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions): TokenRefreshFn {
+  const { type, resourceId, clientId, viewerId, getAccessToken, extraParams = {} } = options;
+  if (type === TYPES.VOD) {
+    throw new Error('VOD playback is not supported yet');
   }
-
-  const viewerId = options.viewerId || getOrCreateViewerId(options.viewerStorageKey);
-  const clientId = getClientIdFromToken(authToken);
-  if (!clientId) {
-    throw new Error('client_id missing from auth token');
+  if (type !== TYPES.LIVE) {
+    throw new TypeError(`Unsupported playback type: ${type}`);
+  }
+  if (!resourceId || !clientId || !viewerId) {
+    throw new Error('resourceId, clientId, and viewerId are required');
+  }
+  if (typeof getAccessToken !== 'function') {
+    throw new TypeError('getAccessToken is required');
   }
 
   const segmentAuthParams = {
-    stream_id: streamId,
+    stream_id: resourceId,
     client_id: clientId,
     viewer_id: viewerId,
     ...Object.fromEntries(
@@ -75,6 +82,7 @@ export function createTokenRefreshFunction(options: TokenRefreshOptions & {
     ),
   };
 
+  const segmentRefreshThreshold = refreshThresholdWithJitter();
   let segmentToken: string | null = null;
   let segmentExpiry = 0;
 
@@ -86,13 +94,10 @@ export function createTokenRefreshFunction(options: TokenRefreshOptions & {
   return async () => {
     if (!segmentToken || needsRefresh(segmentExpiry, segmentRefreshThreshold)) {
       try {
-        const res = await requestStreamAccess({
-          accessUrl: options.accessUrl,
-          streamId,
-          authToken,
-          viewerId,
-          viewerStorageKey: options.viewerStorageKey,
-        });
+        const res = await getAccessToken({ type, resourceId, clientId, viewerId });
+        if (!res?.token || res.expiration == null) {
+          throw new Error('Access granted but no segment token was returned');
+        }
         segmentToken = res.token;
         segmentExpiry = res.expiration;
       } catch (error) {
@@ -108,4 +113,39 @@ export function createTokenRefreshFunction(options: TokenRefreshOptions & {
       segmentAuthParams,
     };
   };
+}
+
+export function createJwtTokenRefreshFunction(
+  options: TokenRefreshOptions & {
+    accessUrl: string;
+    authToken: string;
+    viewerStorageKey?: string;
+  },
+): TokenRefreshFn {
+  const { streamId, authToken, extraParams } = options;
+  if (!streamId || !authToken) {
+    throw new Error('streamId and authToken are required');
+  }
+
+  const viewerId = options.viewerId || getOrCreateViewerId(options.viewerStorageKey);
+  const clientId = getClientIdFromToken(authToken);
+  if (!clientId) {
+    throw new Error('client_id missing from auth token');
+  }
+
+  return createTokenRefreshFunction({
+    type: TYPES.LIVE,
+    resourceId: streamId,
+    clientId,
+    viewerId,
+    extraParams,
+    getAccessToken: ({ resourceId, viewerId: vid }) =>
+      requestStreamAccess({
+        accessUrl: options.accessUrl,
+        streamId: resourceId,
+        authToken,
+        viewerId: vid,
+        viewerStorageKey: options.viewerStorageKey,
+      }),
+  });
 }

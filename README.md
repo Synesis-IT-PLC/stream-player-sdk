@@ -1,30 +1,116 @@
 # stream-web-sdk (`@convay/cast-sdk`)
 
-Standalone JavaScript/TypeScript client for gated HLS playback.
+JavaScript/TypeScript SDK for gated HLS playback.
 
-It hides three things partners should not have to wire by hand:
+Partners render `CastPlayer` in the browser. The player never talks to CastAPI. Your app calls **your** backend; your backend calls CastAPI for short-lived segment tokens.
 
-1. Login and the JWT `client_id` claim
-2. Stream creation, which returns `stream_id` and the real playback URL
-3. Segment auth: short-lived tokens plus `stream_id`, `client_id`, and `viewer_id` on `.ts` requests
+VOD (`TYPES.VOD`) is reserved for a later release. This version only plays live streams.
 
-The SDK does **not** persist the JWT. After `login()`, keep `client.authToken` in your own storage if you need it across reloads, then pass it back as `token` when you construct `CastClient`.
+## Playback with `CastPlayer`
 
-Playback URLs look like `https://example.com/hls/stream.m3u8`. Do **not** put `stream_id` in the path. The SDK keeps `stream_id` next to the JWT `client_id` and attaches both as query params on media segments.
+```tsx
+import { CastPlayer, TYPES } from '@convay/cast-sdk/react';
+
+<CastPlayer
+  type={TYPES.LIVE}
+  resourceId={streamId}
+  clientId={clientId}
+  playbackUrl={viewUrl}
+  getAccessToken={async ({ resourceId, viewerId }) => {
+    const res = await fetch('/api/cast/access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ streamId: resourceId, viewerId }),
+    });
+    if (!res.ok) throw new Error('Access failed');
+    return res.json(); // { token, expiration }
+  }}
+/>
+```
+
+`viewerId` is optional. If omitted, the SDK stores a UUID in `localStorage` (`cast_sdk:viewer_id`).
+
+`getAccessToken` is called on the first `.ts` request and again about 15 seconds before the token expires. The playlist URL (`playbackUrl`) is loaded without auth. Segment URLs get `token`, `exp`, `stream_id`, `client_id`, and `viewer_id`.
+
+### Props
+
+| Prop | Required | Notes |
+|------|----------|--------|
+| `type` | yes | `TYPES.LIVE` (only implemented path) |
+| `resourceId` | yes | Live `stream_id` |
+| `clientId` | yes | Partner account id; attached to `.ts` URLs |
+| `playbackUrl` | yes | HLS `view_url` (`https://host/hls/stream.m3u8`) |
+| `getAccessToken` | yes | Returns `{ token, expiration }` (unix seconds) |
+| `viewerId` | no | Override the SDK-managed viewer id |
+| `autoPlay` / `muted` / `controls` / `className` / `poster` | no | Passed through to `<video>` |
+| `onError` / `onReady` | no | Fatal HLS errors; manifest parsed |
+
+How you obtain `resourceId`, `clientId`, and `playbackUrl` is up to you (your API, a share link, etc.).
+
+### Access token contract
+
+`getAccessToken` receives:
+
+```ts
+{ type, resourceId, clientId, viewerId }
+```
+
+Your backend should call CastAPI `POST /api/stream/access` with a partner JWT and body `{ stream_id, viewer_id }`, then return `{ token, expiration }` to the browser. Keep the CastAPI JWT on the server.
 
 ## Identifiers
 
 | Name | Where it comes from | Role |
 |------|---------------------|------|
-| `client_id` | JWT after login | Account that owns the stream |
-| `stream_id` | stream-key response | Stream record; required for access tokens |
-| `viewer_id` | SDK (`localStorage` UUID) | Stable viewer fingerprint for token signing |
-| `view_url` | stream-key field | Real HLS playlist URL (`https://host/hls/stream.m3u8`) |
-| `stream_url` / `stream_key` | stream-key fields | OBS / encoder ingest |
+| `clientId` | You pass it into `CastPlayer` | Account that owns the stream; query param on `.ts` |
+| `resourceId` | Live `stream_id` from stream-key | Stream record; bound into the segment token |
+| `viewerId` | SDK (`localStorage` UUID) unless you pass one | Viewer fingerprint for token signing |
+| `playbackUrl` | Stream-key `view_url` | HLS playlist; no `stream_id` in the path |
 
-## Endpoints the SDK calls
+## Install
 
-You map each of these to **your** backend (a BFF/proxy in front of CastAPI). The SDK only concatenates `baseUrl` + path, or uses an absolute URL as-is.
+```bash
+npm install @convay/cast-sdk hls.js react
+```
+
+Until the package is published:
+
+```bash
+npm install ../stream-web-sdk
+npm install hls.js
+```
+
+`hls.js` and `react` are peer dependencies of the React player.
+
+## Create a stream (`CastClient`)
+
+Use `CastClient` from your app or backend tooling to allocate ingest keys. The JWT from `login()` must stay on a trusted surface in production; the demo app talks to CastAPI directly for convenience.
+
+```js
+import { CastClient } from '@convay/cast-sdk';
+
+const client = new CastClient({
+  baseUrl: 'https://your-backend.example.com',
+  endpoints: {
+    token: '/auth/token',
+    streamKey: '/stream/key',
+    access: '/stream/access',
+    end: '/stream/end',
+    status: '/stream/status',
+  },
+});
+
+await client.login({ email: 'user@example.com', password: 'secret' });
+const stream = await client.createStream({ title: 'My live' });
+// stream.stream_id, stream.view_url, stream.stream_url, stream.stream_key
+```
+
+Relative paths are joined with `baseUrl`. Absolute URLs skip `baseUrl`.
+
+The SDK does **not** persist the JWT. After `login()`, keep `client.authToken` yourself if you need it across reloads, then pass it back as `token` when you construct `CastClient`.
+
+Point OBS at `stream_url` with `stream_key`. Give viewers `stream_id`, `view_url`, and `clientId`.
+
+### Endpoints `CastClient` can call
 
 | Config key | Method | Typical job | Request body | Response |
 |------------|--------|-------------|--------------|----------|
@@ -40,120 +126,29 @@ Envelope used by `token`, `streamKey`, `access`, and `end`:
 { "success": true, "message": "...", "data": {} }
 ```
 
-## Install
-
-```bash
-npm install @convay/cast-sdk hls.js
-```
-
-Until the package is published:
-
-```bash
-npm install ../stream-web-sdk
-npm install hls.js
-```
-
-## Usage
-
-```js
-import Hls from 'hls.js';
-import { CastClient } from '@convay/cast-sdk';
-
-const client = new CastClient({
-  baseUrl: 'https://your-backend.example.com',
-  endpoints: {
-    token: '/auth/token',
-    streamKey: '/stream/key',
-    access: '/stream/access',
-    end: '/stream/end',
-    status: '/stream/status',
-  },
-});
-
-await client.login({ email: 'user@example.com', password: 'secret' });
-// client.authToken  <- save this yourself if you need the session later
-// client.clientId   <- from the JWT, never from the HLS URL
-
-const stream = await client.createStream({ title: 'My live' });
-// stream.stream_id
-// stream.view_url   -> https://host/hls/stream.m3u8
-// stream.stream_url + stream.stream_key  -> encoder
-
-const hls = new Hls(
-  client.createHlsConfig({
-    streamId: stream.stream_id,
-    playbackUrl: stream.view_url,
-  }),
-);
-hls.loadSource(stream.view_url);
-hls.attachMedia(videoElement);
-```
-
-Relative paths are joined with `baseUrl`. Absolute URLs skip `baseUrl`:
-
-```js
-new CastClient({
-  endpoints: {
-    token: 'https://auth.example.com/login',
-    streamKey: 'https://api.example.com/streams/key',
-    access: 'https://api.example.com/streams/access',
-    end: 'https://api.example.com/streams/end',
-    status: 'https://api.example.com/streams/status',
-  },
-});
-```
-
-Point OBS at `stream_url` with `stream_key`. The player loads `view_url` unchanged. The SDK calls your `access` URL and refreshes the segment token about 15 seconds before expiry.
-
-### Play a stream you already created
-
-If you already have `stream_id` and `view_url` from an earlier stream-key call:
-
-```js
-await client.login({ email, password });
-
-const hls = new Hls(
-  client.createHlsConfig({
-    streamId: '0abc...',
-    playbackUrl: 'https://example.com/hls/stream.m3u8',
-  }),
-);
-```
-
-### React / custom player
-
-Use the token refresh callback instead of `createHlsConfig`:
-
-```js
-const refresh = client.createTokenRefreshFunction({ streamId: stream.stream_id });
-const { segmentToken, segmentExpiry, segmentAuthParams } = await refresh();
-```
-
-`segmentAuthParams` is `{ stream_id, client_id, viewer_id }`. Append those plus `token` and `exp` to `.ts` URLs only (leave `.m3u8` playlists unauthenticated).
-
-To check live status, disconnect a stream, fetch a segment token once, or sign out:
-
 ```js
 await client.getStatus(stream.stream_id);
 await client.endStream(stream.stream_id);
-await client.requestAccess(stream.stream_id);
 client.logout();
 ```
 
-## Configuration
+### Custom / non-React player
 
 ```js
-new CastClient({
-  baseUrl: 'https://your-backend.example.com',
-  endpoints: {
-    token: '/auth/token',
-    streamKey: '/stream/key',
-    access: '/stream/access',
-    end: '/stream/end',
-    status: '/stream/status',
-  },
-  token: existingJwt,          // optional: JWT you stored after login()
+import Hls from 'hls.js';
+import { createTokenRefreshFunction, createHlsConfig, TYPES } from '@convay/cast-sdk';
+
+const refresh = createTokenRefreshFunction({
+  type: TYPES.LIVE,
+  resourceId: streamId,
+  clientId,
+  viewerId,
+  getAccessToken,
 });
+
+const hls = new Hls(createHlsConfig({ playbackUrl, tokenRefresh: refresh }));
+hls.loadSource(playbackUrl);
+hls.attachMedia(videoElement);
 ```
 
 ## Build

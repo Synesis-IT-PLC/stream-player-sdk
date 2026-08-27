@@ -1,3 +1,10 @@
+export const TYPES = {
+  LIVE: 'live',
+  VOD: 'vod',
+} as const;
+
+export type PlaybackType = (typeof TYPES)[keyof typeof TYPES];
+
 /**
  * Endpoint URLs the SDK hits.
  */
@@ -55,6 +62,18 @@ export type AccessTokenDetails = {
   expiration: number;
 };
 
+export type AccessTokenRequest = {
+  type: PlaybackType;
+  resourceId: string;
+  clientId: string;
+  viewerId: string;
+};
+
+/** Segment token returned by the partner's `getAccessToken` callback. */
+export type AccessTokenResponse = AccessTokenDetails;
+
+export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenResponse>;
+
 /** Body for `end` and `status`. */
 export type StreamIdRequest = {
   stream_id: string;
@@ -84,6 +103,15 @@ export type TokenRefreshOptions = {
   streamId: string;
   authToken?: string;
   viewerId?: string;
+  extraParams?: Record<string, string | number | null | undefined>;
+};
+
+export type CallbackTokenRefreshOptions = {
+  type: PlaybackType;
+  resourceId: string;
+  clientId: string;
+  viewerId: string;
+  getAccessToken: GetAccessToken;
   extraParams?: Record<string, string | number | null | undefined>;
 };
 

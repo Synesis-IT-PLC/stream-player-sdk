@@ -1,4 +1,4 @@
-import { createTokenRefreshFunction, requestStreamAccess } from './access';
+import { createJwtTokenRefreshFunction, requestStreamAccess } from './access';
 import { createHlsConfig as buildHlsConfig } from './hls';
 import { CastApiError, readJson, requestJson, requestSuccess } from './http';
 import { getClientIdFromToken, getEmailFromToken, isJwtExpired } from './jwt';
@@ -133,7 +133,7 @@ export class CastClient {
   }
 
   createTokenRefreshFunction(options: TokenRefreshOptions): TokenRefreshFn {
-    return createTokenRefreshFunction({
+    return createJwtTokenRefreshFunction({
       ...options,
       accessUrl: this.url('access'),
       authToken: options.authToken || this.requireToken(),

@@ -1,7 +1,7 @@
 {
   "name": "@convay/cast-sdk",
   "version": "0.1.0",
-  "description": "Standalone CastAPI web SDK for gated HLS playback: login, stream keys, and segment auth params.",
+  "description": "CastAPI web SDK for gated HLS playback: CastPlayer, segment auth, and stream keys.",
   "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -12,10 +12,22 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs",
+      "default": "./dist/react/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "react": ["./dist/react/index.d.ts"]
     }
   },
   "files": [
     "dist",
+    "react",
     "README.md"
   ],
   "scripts": {
@@ -24,15 +36,27 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "hls.js": "^1.0.0"
+    "hls.js": "^1.0.0",
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "peerDependenciesMeta": {
     "hls.js": {
       "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
     "hls.js": "^1.6.15",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
   }
