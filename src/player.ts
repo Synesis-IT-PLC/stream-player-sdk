@@ -76,6 +76,7 @@ export function createCastPlayer(
   video: HTMLVideoElement,
   options: CastPlayerOptions,
 ): CastPlayerHandle {
+
   const {
     type,
     streamId,

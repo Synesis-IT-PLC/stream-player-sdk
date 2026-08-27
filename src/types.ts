@@ -5,7 +5,6 @@ export const TYPES = {
 
 export type PlaybackType = (typeof TYPES)[keyof typeof TYPES];
 
-/** Segment token + expiration (unix seconds). */
 export type AccessTokenDetails = {
   token: string;
   expiration: number;
