@@ -13,7 +13,7 @@ export type AccessTokenDetails = {
 
 export type AccessTokenRequest = {
   type: PlaybackType;
-  resourceId: string;
+  streamId: string;
   clientId: string;
   viewerId: string;
 };
@@ -37,7 +37,7 @@ export type TokenRefreshFn = () => Promise<TokenRefreshResult>;
 
 export type CallbackTokenRefreshOptions = {
   type: PlaybackType;
-  resourceId: string;
+  streamId: string;
   clientId: string;
   viewerId: string;
   getAccessToken: GetAccessToken;

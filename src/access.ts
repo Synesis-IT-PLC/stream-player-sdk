@@ -8,22 +8,22 @@ function refreshThresholdWithJitter(): number {
 }
 
 export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions): TokenRefreshFn {
-  const { type, resourceId, clientId, viewerId, getAccessToken, extraParams = {} } = options;
+  const { type, streamId, clientId, viewerId, getAccessToken, extraParams = {} } = options;
   if (type === TYPES.VOD) {
     throw new Error('VOD playback is not supported yet');
   }
   if (type !== TYPES.LIVE) {
     throw new TypeError(`Unsupported playback type: ${type}`);
   }
-  if (!resourceId || !clientId || !viewerId) {
-    throw new Error('resourceId, clientId, and viewerId are required');
+  if (!streamId || !clientId || !viewerId) {
+    throw new Error('streamId, clientId, and viewerId are required');
   }
   if (typeof getAccessToken !== 'function') {
     throw new TypeError('getAccessToken is required');
   }
 
   const segmentAuthParams = {
-    stream_id: resourceId,
+    stream_id: streamId,
     client_id: clientId,
     viewer_id: viewerId,
     ...Object.fromEntries(
@@ -45,7 +45,7 @@ export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions)
   return async () => {
     if (!segmentToken || needsRefresh(segmentExpiry, segmentRefreshThreshold)) {
       try {
-        const res = await getAccessToken({ type, resourceId, clientId, viewerId });
+        const res = await getAccessToken({ type, streamId, clientId, viewerId });
         if (!res?.token || res.expiration == null) {
           throw new Error('Access granted but no segment token was returned');
         }

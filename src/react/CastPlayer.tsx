@@ -8,7 +8,7 @@ import { getOrCreateViewerId } from '../viewer';
 
 export type CastPlayerProps = {
   type: PlaybackType;
-  resourceId: string;
+  streamId: string;
   clientId: string;
   playbackUrl: string;
   getAccessToken: GetAccessToken;
@@ -24,7 +24,7 @@ export type CastPlayerProps = {
 
 export function CastPlayer({
   type,
-  resourceId,
+  streamId,
   clientId,
   playbackUrl,
   getAccessToken,
@@ -67,8 +67,8 @@ export function CastPlayer({
       return;
     }
 
-    if (!resourceId || !clientId || !playbackUrl) {
-      reportError(new Error('resourceId, clientId, and playbackUrl are required'));
+    if (!streamId || !clientId || !playbackUrl) {
+      reportError(new Error('streamId, clientId, and playbackUrl are required'));
       return;
     }
 
@@ -81,7 +81,7 @@ export function CastPlayer({
     try {
       const tokenRefresh = createTokenRefreshFunction({
         type,
-        resourceId,
+        streamId,
         clientId,
         viewerId,
         getAccessToken: (ctx) => getAccessTokenRef.current(ctx),
@@ -111,7 +111,7 @@ export function CastPlayer({
     return () => {
       hls.destroy();
     };
-  }, [type, resourceId, clientId, playbackUrl, viewerId]);
+  }, [type, streamId, clientId, playbackUrl, viewerId]);
 
   return (
     <video
