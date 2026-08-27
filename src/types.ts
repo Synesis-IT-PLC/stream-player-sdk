@@ -18,9 +18,7 @@ export type AccessTokenRequest = {
   viewerId: string;
 };
 
-export type AccessTokenResponse = AccessTokenDetails;
-
-export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenResponse>;
+export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenDetails>;
 
 export type SegmentAuthParams = {
   stream_id: string;

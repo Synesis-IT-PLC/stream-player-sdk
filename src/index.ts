@@ -5,7 +5,6 @@ export { TYPES } from './types';
 export type {
   AccessTokenDetails,
   AccessTokenRequest,
-  AccessTokenResponse,
   CallbackTokenRefreshOptions,
   GetAccessToken,
   PlaybackType,
