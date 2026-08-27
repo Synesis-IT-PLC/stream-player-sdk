@@ -8,7 +8,8 @@ You render a player and supply `getAccessToken` that calls **your** server. The 
 |--|--|
 | **In scope** | Playback + segment auth |
 | **Out of scope** | Stream create / upload / status / end / billing |
-| **Status** | Live works. VOD API shape exists (`TYPES.VOD`); not shipped yet |
+| **Status** | Live and VOD types work in the SDK (`TYPES.LIVE` / `TYPES.VOD`). Your server/CastAPI must support access for that `streamId`. |
+| **Limitation** | Requires `hls.js` (`Hls.isSupported()`). No native Safari HLS fallback yet. |
 
 ---
 
@@ -78,11 +79,12 @@ SDK calls this on the first `.ts` request and again ~15s before token expiry.
 { token: string, expiration: number } // expiration = unix seconds
 ```
 
-**Browser → your server (example):**
+**Browser -> your server (example):**
 
 ```ts
 async function getAccessToken({ type, streamId, viewerId }) {
-  const res = await fetch(ACCESS_TOKEN_FETCH_ENDPOINT, {
+  // `type` is for your server (live vs vod routing / checks). CastAPI access body does not use it today.
+  const res = await fetch('/api/cast/access', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -93,14 +95,16 @@ async function getAccessToken({ type, streamId, viewerId }) {
 }
 ```
 
-**Your server → CastAPI:**
+**Your server -> CastAPI:**
 
 ```
 POST /api/stream/access
 Authorization: Bearer <CastAPI JWT>
-Body: { type, stream_id, viewer_id }
-→ { token, expiration }   // usually inside CastAPI { success, data }
+Body: { stream_id, viewer_id }
+-> envelope data: { token, expiration }
 ```
+
+`type` stays between the browser and your server (and any VOD-specific logic you add). CastAPI’s access endpoint currently takes only `stream_id` + `viewer_id`.
 
 Never put the CastAPI JWT in the browser.
 
@@ -122,7 +126,7 @@ import { CastPlayer, TYPES } from '@convay/cast-sdk/react';
 />
 ```
 
-For VOD (when shipped): `type={TYPES.VOD}` with the VOD `streamId` / `playbackUrl`.
+For VOD: `type={TYPES.VOD}` with that asset’s `streamId` / `playbackUrl`.
 
 | Prop | Required | Notes |
 |------|----------|--------|
@@ -255,16 +259,16 @@ hls.attachMedia(videoElement);
 ## Segment auth (all paths)
 
 1. Load playlist `.m3u8` — no auth.
-2. First `.ts` → `getAccessToken` → your server → CastAPI.
+2. First `.ts` -> `getAccessToken` -> your server -> CastAPI.
 3. SDK rewrites `.ts` URLs with:
 
 ```
-?token...&exp...&stream_i...&client_id=...&viewer_id=...
+?token=…&exp=…&stream_id=…&client_id=…&viewer_id=…
 ```
 
 4. Refresh ~15s before `exp` (with jitter).
 
-`type` is sent only to your server / CastAPI, not on the CDN URL.
+`type` is sent to your server via `getAccessToken`; it is not on the CDN URL. CastAPI access uses `{ stream_id, viewer_id }` only.
 
 ---
 

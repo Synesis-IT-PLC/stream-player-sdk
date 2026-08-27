@@ -157,6 +157,8 @@ export function CastPlayer({
   const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
   const [selectedQuality, setSelectedQuality] = useState(-1);
   const [isReady, setIsReady] = useState(false);
+  const qualitySelectIdRef = useRef(`cast-quality-select-${crypto.randomUUID()}`);
+  const qualitySelectId = qualitySelectIdRef.current;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -210,11 +212,11 @@ export function CastPlayer({
           <div style={overlayControlsStyle}>
             {qualityLevels.length > 0 && (
               <>
-                <label htmlFor="cast-quality-select" style={qualityLabelStyle}>
+                <label htmlFor={qualitySelectId} style={qualityLabelStyle}>
                   Quality
                 </label>
                 <select
-                  id="cast-quality-select"
+                  id={qualitySelectId}
                   value={selectedQuality}
                   onChange={(e) => {
                     const level = Number.parseInt(e.target.value, 10);

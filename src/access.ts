@@ -42,21 +42,39 @@ export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions)
 
   let segmentToken: string | null = null;
   let segmentExpiry = 0;
+  let inFlight: Promise<void> | null = null;
+
+  async function fetchToken(): Promise<void> {
+    const previousToken = segmentToken;
+    const previousExpiry = segmentExpiry;
+    try {
+      const res = await getAccessToken({ type, streamId, clientId, viewerId });
+      if (!res?.token || res.expiration == null || !Number.isFinite(res.expiration)) {
+        throw new Error('Invalid access response: token and expiration are required');
+      }
+      segmentToken = res.token;
+      segmentExpiry = res.expiration;
+    } catch (error) {
+      // Don't wipe a token that another concurrent call already replaced.
+      if (segmentToken === previousToken && segmentExpiry === previousExpiry) {
+        segmentToken = null;
+        segmentExpiry = 0;
+      }
+      throw error;
+    }
+  }
+
+  function refreshShared(): Promise<void> {
+    if (inFlight) return inFlight;
+    inFlight = fetchToken().finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
+  }
 
   return async () => {
     if (!segmentToken || needsRefresh(segmentExpiry, segmentRefreshThreshold)) {
-      try {
-        const res = await getAccessToken({ type, streamId, clientId, viewerId });
-        if (!res?.token || res.expiration == null) {
-          throw new Error('Invalid access response: token and expiration are required');
-        }
-        segmentToken = res.token;
-        segmentExpiry = res.expiration;
-      } catch (error) {
-        segmentToken = null;
-        segmentExpiry = 0;
-        throw error;
-      }
+      await refreshShared();
     }
 
     return {

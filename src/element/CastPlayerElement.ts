@@ -5,17 +5,19 @@ import type { GetAccessToken, PlaybackType } from '../types';
 
 export const CAST_PLAYER_TAG = 'cast-player';
 
-const OBSERVED_ATTRIBUTES = [
+// Changing these restarts HLS playback. 
+const PLAYBACK_ATTRIBUTES = [
   'type',
   'stream-id',
   'client-id',
   'playback-url',
   'viewer-id',
-  'autoplay',
-  'muted',
-  'controls',
-  'poster',
 ] as const;
+
+// Changing these only updates the underlying <video>, not HLS playback.
+const VIDEO_ATTRIBUTES = ['autoplay', 'muted', 'controls', 'poster'] as const;
+
+const OBSERVED_ATTRIBUTES = [...PLAYBACK_ATTRIBUTES, ...VIDEO_ATTRIBUTES] as const;
 
 const OVERLAY_STYLES = `
 :host {
@@ -169,11 +171,12 @@ export class CastPlayerElement extends HTMLElement {
 
     this.#qualityMenu = document.createElement('div');
     this.#qualityMenu.className = 'quality-menu';
+    const qualitySelectId = `cast-quality-select-${crypto.randomUUID()}`;
     const qualityLabel = document.createElement('label');
-    qualityLabel.htmlFor = 'cast-quality-select';
+    qualityLabel.htmlFor = qualitySelectId;
     qualityLabel.textContent = 'Quality';
     this.#qualitySelect = document.createElement('select');
-    this.#qualitySelect.id = 'cast-quality-select';
+    this.#qualitySelect.id = qualitySelectId;
     this.#qualitySelect.setAttribute('aria-label', 'Playback quality');
     this.#qualitySelect.addEventListener('change', () => {
       const level = Number.parseInt(this.#qualitySelect.value, 10);
@@ -239,8 +242,11 @@ export class CastPlayerElement extends HTMLElement {
     this.#destroyPlayer();
   }
 
-  attributeChangedCallback(): void {
-    this.#applyVideoAttrs();
+  attributeChangedCallback(name: string): void {
+    if ((VIDEO_ATTRIBUTES as readonly string[]).includes(name)) {
+      this.#applyVideoAttrs();
+      return;
+    }
     this.#scheduleRestart();
   }
 
