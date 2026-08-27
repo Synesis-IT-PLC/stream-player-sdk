@@ -93,11 +93,7 @@ export function createCastPlayer(
     onError?.(error);
   };
 
-  if (type === TYPES.VOD) {
-    reportError(new Error('VOD playback is not supported yet'));
-    return emptyHandle();
-  }
-  if (type !== TYPES.LIVE) {
+  if (type !== TYPES.LIVE && type !== TYPES.VOD) {
     reportError(new Error(`Unsupported playback type: ${type}`));
     return emptyHandle();
   }

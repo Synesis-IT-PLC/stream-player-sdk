@@ -24,50 +24,93 @@ const containerStyle: CSSProperties = {
   position: 'relative',
   width: '100%',
   maxWidth: '100%',
-  backgroundColor: '#000',
-  borderRadius: '8px',
+  backgroundColor: '#0a0a0a',
+  borderRadius: '12px',
   overflow: 'hidden',
+  boxShadow: '0 8px 28px rgba(0, 0, 0, 0.35)',
 };
 
 const videoStyle: CSSProperties = {
   width: '100%',
   height: 'auto',
   display: 'block',
-  minHeight: '200px',
+  minHeight: '240px',
+  backgroundColor: '#000',
 };
 
 const chromeStyle: CSSProperties = {
   position: 'absolute',
-  top: '10px',
-  right: '10px',
+  top: '12px',
+  left: '12px',
+  right: '12px',
   zIndex: 20,
   display: 'flex',
   alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '10px',
+  pointerEvents: 'none',
+};
+
+const badgeStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  padding: '6px 10px',
+  borderRadius: '999px',
+  backgroundColor: 'rgba(0, 0, 0, 0.72)',
+  color: '#fff',
+  fontSize: '12px',
+  fontWeight: 600,
+  letterSpacing: '0.02em',
+  backdropFilter: 'blur(8px)',
+  pointerEvents: 'none',
+};
+
+const liveDotStyle: CSSProperties = {
+  width: '8px',
+  height: '8px',
+  borderRadius: '50%',
+  backgroundColor: '#ef4444',
+  boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.25)',
+};
+
+const controlsClusterStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
   gap: '8px',
-  backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  padding: '8px 12px',
-  borderRadius: '6px',
-  backdropFilter: 'blur(4px)',
+  padding: '6px 8px',
+  borderRadius: '10px',
+  backgroundColor: 'rgba(0, 0, 0, 0.72)',
+  backdropFilter: 'blur(8px)',
+  pointerEvents: 'auto',
 };
 
 const labelStyle: CSSProperties = {
-  color: '#fff',
-  fontSize: '14px',
-  fontWeight: 500,
+  color: 'rgba(255, 255, 255, 0.75)',
+  fontSize: '12px',
+  fontWeight: 600,
   whiteSpace: 'nowrap',
+  paddingLeft: '4px',
 };
 
 const selectStyle: CSSProperties = {
-  backgroundColor: '#1f1f1f',
+  appearance: 'none' as CSSProperties['appearance'],
+  WebkitAppearance: 'none' as CSSProperties['WebkitAppearance'],
+  backgroundColor: 'rgba(255, 255, 255, 0.08)',
   color: '#fff',
-  border: '1px solid rgba(255, 255, 255, 0.35)',
-  borderRadius: '4px',
-  padding: '6px 10px',
-  fontSize: '14px',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  borderRadius: '8px',
+  padding: '7px 28px 7px 10px',
+  fontSize: '13px',
+  fontWeight: 500,
   cursor: 'pointer',
   outline: 'none',
-  minWidth: '120px',
+  minWidth: '132px',
   colorScheme: 'dark',
+  backgroundImage:
+    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E\")",
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 10px center',
 };
 
 const optionStyle: CSSProperties = {
@@ -76,13 +119,13 @@ const optionStyle: CSSProperties = {
 };
 
 const syncButtonStyle: CSSProperties = {
-  backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  backgroundColor: 'rgba(47, 158, 136, 0.95)',
   color: '#fff',
-  border: '1px solid rgba(255, 255, 255, 0.3)',
-  borderRadius: '4px',
-  padding: '6px 12px',
-  fontSize: '14px',
-  fontWeight: 500,
+  border: '0',
+  borderRadius: '8px',
+  padding: '7px 12px',
+  fontSize: '13px',
+  fontWeight: 600,
   cursor: 'pointer',
   whiteSpace: 'nowrap',
 };
@@ -113,11 +156,13 @@ export function CastPlayer({
 
   const [levels, setLevels] = useState<QualityLevel[]>([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
+    setReady(false);
     const handle = createCastPlayer(video, {
       type,
       streamId,
@@ -126,7 +171,10 @@ export function CastPlayer({
       viewerId,
       getAccessToken: (ctx) => getAccessTokenRef.current(ctx),
       onError: (error) => onErrorRef.current?.(error),
-      onReady: () => onReadyRef.current?.(),
+      onReady: () => {
+        setReady(true);
+        onReadyRef.current?.();
+      },
       onLevels: (nextLevels) => setLevels(nextLevels),
       onLevelChange: (level) => setCurrentLevel(level),
     });
@@ -137,6 +185,7 @@ export function CastPlayer({
       handleRef.current = null;
       setLevels([]);
       setCurrentLevel(-1);
+      setReady(false);
     };
   }, [type, streamId, clientId, playbackUrl, viewerId]);
 
@@ -147,42 +196,55 @@ export function CastPlayer({
     <div style={containerStyle} className={className}>
       {showChrome && (
         <div style={chromeStyle}>
-          {levels.length > 0 && (
-            <>
-              <label htmlFor="cast-quality-select" style={labelStyle}>
-                Quality
-              </label>
-              <select
-                id="cast-quality-select"
-                value={currentLevel}
-                onChange={(e) => {
-                  const level = Number.parseInt(e.target.value, 10);
-                  handleRef.current?.setLevel(level);
-                  setCurrentLevel(level);
-                }}
-                style={selectStyle}
-                aria-label="Playback quality"
-              >
-                <option value={-1} style={optionStyle}>
-                  Auto
-                </option>
-                {levels.map((level) => (
-                  <option key={level.index} value={level.index} style={optionStyle}>
-                    {level.name}
+          <span style={badgeStyle}>
+            {showLiveSync ? (
+              <>
+                <span style={liveDotStyle} aria-hidden />
+                <span>LIVE</span>
+              </>
+            ) : (
+              <span>VOD</span>
+            )}
+            {!ready && <span style={{ opacity: 0.7, fontWeight: 500 }}>· loading</span>}
+          </span>
+          <div style={controlsClusterStyle}>
+            {levels.length > 0 && (
+              <>
+                <label htmlFor="cast-quality-select" style={labelStyle}>
+                  Quality
+                </label>
+                <select
+                  id="cast-quality-select"
+                  value={currentLevel}
+                  onChange={(e) => {
+                    const level = Number.parseInt(e.target.value, 10);
+                    handleRef.current?.setLevel(level);
+                    setCurrentLevel(level);
+                  }}
+                  style={selectStyle}
+                  aria-label="Playback quality"
+                >
+                  <option value={-1} style={optionStyle}>
+                    Auto
                   </option>
-                ))}
-              </select>
-            </>
-          )}
-          {showLiveSync && (
-            <button
-              type="button"
-              style={syncButtonStyle}
-              onClick={() => handleRef.current?.syncToLive()}
-            >
-              Sync to live
-            </button>
-          )}
+                  {levels.map((level) => (
+                    <option key={level.index} value={level.index} style={optionStyle}>
+                      {level.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            {showLiveSync && (
+              <button
+                type="button"
+                style={syncButtonStyle}
+                onClick={() => handleRef.current?.syncToLive()}
+              >
+                Go live
+              </button>
+            )}
+          </div>
         </div>
       )}
       <video

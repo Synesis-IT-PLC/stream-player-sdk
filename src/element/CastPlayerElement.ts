@@ -23,62 +23,100 @@ const CHROME_STYLES = `
   position: relative;
   width: 100%;
   max-width: 100%;
-  background: #000;
-  border-radius: 8px;
+  background: #0a0a0a;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 video {
   width: 100%;
   height: auto;
   display: block;
-  min-height: 200px;
+  min-height: 240px;
+  background: #000;
 }
 .chrome {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  left: 12px;
+  right: 12px;
   z-index: 20;
   display: none;
   align-items: center;
-  gap: 8px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 8px 12px;
-  border-radius: 6px;
-  backdrop-filter: blur(4px);
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
 }
 .chrome.visible {
   display: flex;
 }
-.chrome label {
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
   color: #fff;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(8px);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+}
+.controls-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+.chrome label {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
+  padding-left: 4px;
 }
 .chrome select {
-  background: #1f1f1f;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 4px;
-  padding: 6px 10px;
-  font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 7px 28px 7px 10px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   outline: none;
-  min-width: 120px;
+  min-width: 132px;
   color-scheme: dark;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
 }
 .chrome select option {
   color: #111;
   background: #fff;
 }
 .chrome button {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(47, 158, 136, 0.95);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 14px;
-  font-weight: 500;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -103,6 +141,7 @@ export class CastPlayerElement extends HTMLElement {
 
   readonly #video: HTMLVideoElement;
   readonly #chrome: HTMLDivElement;
+  readonly #badge: HTMLSpanElement;
   readonly #qualityWrap: HTMLDivElement;
   readonly #qualitySelect: HTMLSelectElement;
   readonly #syncButton: HTMLButtonElement;
@@ -121,6 +160,13 @@ export class CastPlayerElement extends HTMLElement {
     this.#chrome = document.createElement('div');
     this.#chrome.className = 'chrome';
 
+    this.#badge = document.createElement('span');
+    this.#badge.className = 'badge';
+    this.#badge.textContent = 'VOD';
+
+    const cluster = document.createElement('div');
+    cluster.className = 'controls-cluster';
+
     this.#qualityWrap = document.createElement('div');
     this.#qualityWrap.className = 'quality-wrap';
     const qualityLabel = document.createElement('label');
@@ -138,12 +184,13 @@ export class CastPlayerElement extends HTMLElement {
     this.#syncButton = document.createElement('button');
     this.#syncButton.type = 'button';
     this.#syncButton.className = 'sync-btn';
-    this.#syncButton.textContent = 'Sync to live';
+    this.#syncButton.textContent = 'Go live';
     this.#syncButton.addEventListener('click', () => {
       this.#handle?.syncToLive();
     });
 
-    this.#chrome.append(this.#qualityWrap, this.#syncButton);
+    cluster.append(this.#qualityWrap, this.#syncButton);
+    this.#chrome.append(this.#badge, cluster);
 
     this.#video = document.createElement('video');
     this.#video.playsInline = true;
@@ -255,6 +302,14 @@ export class CastPlayerElement extends HTMLElement {
   #updateChromeVisibility(): void {
     const showSync = this.getAttribute('type') === TYPES.LIVE;
     this.#syncButton.classList.toggle('visible', showSync);
+    this.#badge.replaceChildren();
+    if (showSync) {
+      const dot = document.createElement('span');
+      dot.className = 'live-dot';
+      this.#badge.append(dot, document.createTextNode('LIVE'));
+    } else {
+      this.#badge.textContent = 'VOD';
+    }
     const showChrome =
       this.#qualityWrap.classList.contains('visible') || showSync;
     this.#chrome.classList.toggle('visible', showChrome);

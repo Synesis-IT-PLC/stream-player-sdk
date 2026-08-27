@@ -9,10 +9,7 @@ function refreshThresholdWithJitter(): number {
 
 export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions): TokenRefreshFn {
   const { type, streamId, clientId, viewerId, getAccessToken, extraParams = {} } = options;
-  if (type === TYPES.VOD) {
-    throw new Error('VOD playback is not supported yet');
-  }
-  if (type !== TYPES.LIVE) {
+  if (type !== TYPES.LIVE && type !== TYPES.VOD) {
     throw new TypeError(`Unsupported playback type: ${type}`);
   }
   if (!streamId || !clientId || !viewerId) {
