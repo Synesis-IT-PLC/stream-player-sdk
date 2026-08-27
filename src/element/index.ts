@@ -9,3 +9,4 @@ export {
 } from './CastPlayerElement';
 export { TYPES } from '../types';
 export type { GetAccessToken, PlaybackType } from '../types';
+export type { QualityLevel } from '../player';

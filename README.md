@@ -89,8 +89,14 @@ VOD uses the same props with `type={TYPES.VOD}`.
 | `playbackUrl` | yes | HLS playlist URL |
 | `getAccessToken` | yes | Returns `{ token, expiration }` (unix seconds) |
 | `viewerId` | no | Override SDK-managed viewer id |
-| `autoPlay` / `muted` / `controls` / `className` / `poster` | no | Passed through to `<video>` |
+| `autoPlay` / `muted` / `controls` / `className` / `poster` | no | Passed through to `<video>` (`className` is on the wrapper) |
 | `onError` / `onReady` | no | Fatal HLS errors; manifest parsed |
+
+Built-in chrome (no extra props):
+
+- **Quality** — Auto (ABR) plus available ladder levels
+- **Sync to live** — shown for `TYPES.LIVE`; jumps to the live edge
+- **Seek** — native controls stay on. Live seeks past the available edge are clamped; VOD (when shipped) allows full seek
 
 `viewerId` is optional. If omitted, the SDK stores a UUID in `localStorage` (`cast_sdk:viewer_id`).
 
@@ -109,6 +115,7 @@ Import registers the tag. Prefer React `CastPlayer` in React apps.
   };
   el.addEventListener('ready', () => console.log('ready'));
   el.addEventListener('error', (e) => console.error(e.detail));
+  el.addEventListener('levels', (e) => console.log(e.detail));
 </script>
 
 <cast-player
@@ -119,7 +126,9 @@ Import registers the tag. Prefer React `CastPlayer` in React apps.
 ></cast-player>
 ```
 
-`getAccessToken` must be a **JS property** (not an HTML attribute). Events: `ready`, `error` (`detail` is an `Error`).
+`getAccessToken` must be a **JS property** (not an HTML attribute). Events: `ready`, `error` (`detail` is an `Error`), `levels` (`detail` is `QualityLevel[]`).
+
+Same quality + Sync to live chrome as React. Methods: `syncToLive()`, `setLevel(n)`, `getLevels()`, `getCurrentLevel()`.
 
 | Attribute | Maps to |
 |-----------|---------|
@@ -143,11 +152,23 @@ const player = createCastPlayer(videoElement, {
   getAccessToken,
   onError: (err) => console.error(err),
   onReady: () => console.log('ready'),
+  onLevels: (levels) => console.log(levels),
+  onLevelChange: (level) => console.log(level),
 });
 
-// later
+player.setLevel(-1); // Auto ABR
+player.syncToLive(); // live only
 player.destroy();
 ```
+
+| Handle method | Notes |
+|---------------|--------|
+| `getLevels()` / `getCurrentLevel()` / `setLevel(n)` | `-1` = Auto |
+| `syncToLive()` | Seek to live edge + play; no-op for VOD |
+| `isLive()` | Based on `type` |
+| `destroy()` | Tear down hls.js and listeners |
+
+Live seek clamp and ABR default (`currentLevel = -1`) are applied inside the controller. Build your own UI with these methods, or use React / `<cast-player>` for the built-in chrome.
 
 ### 4. Headless (own hls.js)
 
@@ -298,9 +319,9 @@ sequenceDiagram
 
 | Import | Use for |
 |--------|---------|
-| `@convay/cast-sdk` | `createCastPlayer`, HLS helpers, `TYPES`, token refresh |
-| `@convay/cast-sdk/react` | React `CastPlayer` |
-| `@convay/cast-sdk/element` | `<cast-player>` web component |
+| `@convay/cast-sdk` | `createCastPlayer`, quality/sync handle API, HLS helpers, `TYPES`, token refresh |
+| `@convay/cast-sdk/react` | React `CastPlayer` (quality + Sync to live chrome) |
+| `@convay/cast-sdk/element` | `<cast-player>` web component (same chrome) |
 
 ---
 
@@ -331,6 +352,14 @@ export type AccessTokenDetails = {
 };
 
 export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenDetails>;
+
+export type QualityLevel = {
+  index: number;
+  height?: number;
+  width?: number;
+  bitrate?: number;
+  name: string;
+};
 ```
 
 ### Segment `.ts` URL format
