@@ -257,9 +257,7 @@ export function CastPlayer({
         autoPlay={autoPlay}
         poster={poster}
         playsInline
-      >
-        <track kind="captions" srcLang="en" label="Captions" />
-      </video>
+      />
     </div>
   );
 }

@@ -198,11 +198,6 @@ export class CastPlayerElement extends HTMLElement {
     this.#video = document.createElement('video');
     this.#video.playsInline = true;
     this.#video.controls = true;
-    const track = document.createElement('track');
-    track.kind = 'captions';
-    track.srclang = 'en';
-    track.label = 'Captions';
-    this.#video.appendChild(track);
 
     shadow.append(this.#overlay, this.#video);
   }

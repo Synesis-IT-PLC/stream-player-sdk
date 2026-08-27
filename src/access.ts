@@ -2,9 +2,11 @@ import { TYPES } from './types';
 import type { CallbackTokenRefreshOptions, TokenRefreshFn } from './types';
 
 function refreshThresholdWithJitter(): number {
-  const jitterBytes = new Uint32Array(1);
-  crypto.getRandomValues(jitterBytes);
-  return 15 + (jitterBytes[0]! / 0x100000000) * 6 - 3;
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    return 15;
+  }
+  const rnd = crypto.getRandomValues(new Uint32Array(1))[0]! / 0x100000000;
+  return 15 + rnd * 6 - 3;
 }
 
 export function needsRefresh(expiry: number, threshold: number): boolean {
