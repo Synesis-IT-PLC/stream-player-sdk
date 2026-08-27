@@ -38,7 +38,7 @@ const videoStyle: CSSProperties = {
   backgroundColor: '#000',
 };
 
-const chromeStyle: CSSProperties = {
+const overlayStyle: CSSProperties = {
   position: 'absolute',
   top: '12px',
   left: '12px',
@@ -51,7 +51,7 @@ const chromeStyle: CSSProperties = {
   pointerEvents: 'none',
 };
 
-const badgeStyle: CSSProperties = {
+const typeBadgeStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: '6px',
@@ -74,7 +74,7 @@ const liveDotStyle: CSSProperties = {
   boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.25)',
 };
 
-const controlsClusterStyle: CSSProperties = {
+const overlayControlsStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
@@ -85,7 +85,7 @@ const controlsClusterStyle: CSSProperties = {
   pointerEvents: 'auto',
 };
 
-const labelStyle: CSSProperties = {
+const qualityLabelStyle: CSSProperties = {
   color: 'rgba(255, 255, 255, 0.75)',
   fontSize: '12px',
   fontWeight: 600,
@@ -93,7 +93,7 @@ const labelStyle: CSSProperties = {
   paddingLeft: '4px',
 };
 
-const selectStyle: CSSProperties = {
+const qualitySelectStyle: CSSProperties = {
   appearance: 'none' as CSSProperties['appearance'],
   WebkitAppearance: 'none' as CSSProperties['WebkitAppearance'],
   backgroundColor: 'rgba(255, 255, 255, 0.08)',
@@ -113,12 +113,12 @@ const selectStyle: CSSProperties = {
   backgroundPosition: 'right 10px center',
 };
 
-const optionStyle: CSSProperties = {
+const qualityOptionStyle: CSSProperties = {
   backgroundColor: '#fff',
   color: '#111',
 };
 
-const syncButtonStyle: CSSProperties = {
+const goLiveButtonStyle: CSSProperties = {
   backgroundColor: 'rgba(47, 158, 136, 0.95)',
   color: '#fff',
   border: '0',
@@ -154,15 +154,15 @@ export function CastPlayer({
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
-  const [levels, setLevels] = useState<QualityLevel[]>([]);
-  const [currentLevel, setCurrentLevel] = useState(-1);
-  const [ready, setReady] = useState(false);
+  const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
+  const [selectedQuality, setSelectedQuality] = useState(-1);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    setReady(false);
+    setIsReady(false);
     const handle = createCastPlayer(video, {
       type,
       streamId,
@@ -172,32 +172,32 @@ export function CastPlayer({
       getAccessToken: (ctx) => getAccessTokenRef.current(ctx),
       onError: (error) => onErrorRef.current?.(error),
       onReady: () => {
-        setReady(true);
+        setIsReady(true);
         onReadyRef.current?.();
       },
-      onLevels: (nextLevels) => setLevels(nextLevels),
-      onLevelChange: (level) => setCurrentLevel(level),
+      onLevels: (nextLevels) => setQualityLevels(nextLevels),
+      onLevelChange: (level) => setSelectedQuality(level),
     });
     handleRef.current = handle;
 
     return () => {
       handle.destroy();
       handleRef.current = null;
-      setLevels([]);
-      setCurrentLevel(-1);
-      setReady(false);
+      setQualityLevels([]);
+      setSelectedQuality(-1);
+      setIsReady(false);
     };
   }, [type, streamId, clientId, playbackUrl, viewerId]);
 
-  const showLiveSync = type === TYPES.LIVE;
-  const showChrome = levels.length > 0 || showLiveSync;
+  const isLive = type === TYPES.LIVE;
+  const showOverlay = qualityLevels.length > 0 || isLive;
 
   return (
     <div style={containerStyle} className={className}>
-      {showChrome && (
-        <div style={chromeStyle}>
-          <span style={badgeStyle}>
-            {showLiveSync ? (
+      {showOverlay && (
+        <div style={overlayStyle}>
+          <span style={typeBadgeStyle}>
+            {isLive ? (
               <>
                 <span style={liveDotStyle} aria-hidden />
                 <span>LIVE</span>
@@ -205,40 +205,40 @@ export function CastPlayer({
             ) : (
               <span>VOD</span>
             )}
-            {!ready && <span style={{ opacity: 0.7, fontWeight: 500 }}>· loading</span>}
+            {!isReady && <span style={{ opacity: 0.7, fontWeight: 500 }}>· loading</span>}
           </span>
-          <div style={controlsClusterStyle}>
-            {levels.length > 0 && (
+          <div style={overlayControlsStyle}>
+            {qualityLevels.length > 0 && (
               <>
-                <label htmlFor="cast-quality-select" style={labelStyle}>
+                <label htmlFor="cast-quality-select" style={qualityLabelStyle}>
                   Quality
                 </label>
                 <select
                   id="cast-quality-select"
-                  value={currentLevel}
+                  value={selectedQuality}
                   onChange={(e) => {
                     const level = Number.parseInt(e.target.value, 10);
                     handleRef.current?.setLevel(level);
-                    setCurrentLevel(level);
+                    setSelectedQuality(level);
                   }}
-                  style={selectStyle}
+                  style={qualitySelectStyle}
                   aria-label="Playback quality"
                 >
-                  <option value={-1} style={optionStyle}>
+                  <option value={-1} style={qualityOptionStyle}>
                     Auto
                   </option>
-                  {levels.map((level) => (
-                    <option key={level.index} value={level.index} style={optionStyle}>
+                  {qualityLevels.map((level) => (
+                    <option key={level.index} value={level.index} style={qualityOptionStyle}>
                       {level.name}
                     </option>
                   ))}
                 </select>
               </>
             )}
-            {showLiveSync && (
+            {isLive && (
               <button
                 type="button"
-                style={syncButtonStyle}
+                style={goLiveButtonStyle}
                 onClick={() => handleRef.current?.syncToLive()}
               >
                 Go live

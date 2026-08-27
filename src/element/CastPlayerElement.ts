@@ -17,7 +17,7 @@ const OBSERVED_ATTRIBUTES = [
   'poster',
 ] as const;
 
-const CHROME_STYLES = `
+const OVERLAY_STYLES = `
 :host {
   display: block;
   position: relative;
@@ -35,7 +35,7 @@ video {
   min-height: 240px;
   background: #000;
 }
-.chrome {
+.overlay {
   position: absolute;
   top: 12px;
   left: 12px;
@@ -47,10 +47,10 @@ video {
   gap: 10px;
   pointer-events: none;
 }
-.chrome.visible {
+.overlay.visible {
   display: flex;
 }
-.badge {
+.type-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -70,7 +70,7 @@ video {
   background: #ef4444;
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
 }
-.controls-cluster {
+.overlay-controls {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -80,14 +80,14 @@ video {
   backdrop-filter: blur(8px);
   pointer-events: auto;
 }
-.chrome label {
+.overlay label {
   color: rgba(255, 255, 255, 0.75);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   padding-left: 4px;
 }
-.chrome select {
+.overlay select {
   appearance: none;
   -webkit-appearance: none;
   background: rgba(255, 255, 255, 0.08);
@@ -105,11 +105,11 @@ video {
   background-repeat: no-repeat;
   background-position: right 10px center;
 }
-.chrome select option {
+.overlay select option {
   color: #111;
   background: #fff;
 }
-.chrome button {
+.overlay button {
   background: rgba(47, 158, 136, 0.95);
   color: #fff;
   border: 0;
@@ -120,18 +120,18 @@ video {
   cursor: pointer;
   white-space: nowrap;
 }
-.quality-wrap {
+.quality-menu {
   display: none;
   align-items: center;
   gap: 8px;
 }
-.quality-wrap.visible {
+.quality-menu.visible {
   display: flex;
 }
-.sync-btn {
+.go-live-btn {
   display: none;
 }
-.sync-btn.visible {
+.go-live-btn.visible {
   display: inline-block;
 }
 `;
@@ -140,11 +140,11 @@ export class CastPlayerElement extends HTMLElement {
   static readonly observedAttributes: string[] = [...OBSERVED_ATTRIBUTES];
 
   readonly #video: HTMLVideoElement;
-  readonly #chrome: HTMLDivElement;
-  readonly #badge: HTMLSpanElement;
-  readonly #qualityWrap: HTMLDivElement;
+  readonly #overlay: HTMLDivElement;
+  readonly #typeBadge: HTMLSpanElement;
+  readonly #qualityMenu: HTMLDivElement;
   readonly #qualitySelect: HTMLSelectElement;
-  readonly #syncButton: HTMLButtonElement;
+  readonly #goLiveButton: HTMLButtonElement;
   #handle: CastPlayerHandle | null = null;
   #getAccessToken: GetAccessToken | null = null;
   #restartScheduled = false;
@@ -154,21 +154,21 @@ export class CastPlayerElement extends HTMLElement {
     const shadow = this.attachShadow({ mode: 'open' });
 
     const style = document.createElement('style');
-    style.textContent = CHROME_STYLES;
+    style.textContent = OVERLAY_STYLES;
     shadow.appendChild(style);
 
-    this.#chrome = document.createElement('div');
-    this.#chrome.className = 'chrome';
+    this.#overlay = document.createElement('div');
+    this.#overlay.className = 'overlay';
 
-    this.#badge = document.createElement('span');
-    this.#badge.className = 'badge';
-    this.#badge.textContent = 'VOD';
+    this.#typeBadge = document.createElement('span');
+    this.#typeBadge.className = 'type-badge';
+    this.#typeBadge.textContent = 'VOD';
 
-    const cluster = document.createElement('div');
-    cluster.className = 'controls-cluster';
+    const overlayControls = document.createElement('div');
+    overlayControls.className = 'overlay-controls';
 
-    this.#qualityWrap = document.createElement('div');
-    this.#qualityWrap.className = 'quality-wrap';
+    this.#qualityMenu = document.createElement('div');
+    this.#qualityMenu.className = 'quality-menu';
     const qualityLabel = document.createElement('label');
     qualityLabel.htmlFor = 'cast-quality-select';
     qualityLabel.textContent = 'Quality';
@@ -179,18 +179,18 @@ export class CastPlayerElement extends HTMLElement {
       const level = Number.parseInt(this.#qualitySelect.value, 10);
       this.#handle?.setLevel(level);
     });
-    this.#qualityWrap.append(qualityLabel, this.#qualitySelect);
+    this.#qualityMenu.append(qualityLabel, this.#qualitySelect);
 
-    this.#syncButton = document.createElement('button');
-    this.#syncButton.type = 'button';
-    this.#syncButton.className = 'sync-btn';
-    this.#syncButton.textContent = 'Go live';
-    this.#syncButton.addEventListener('click', () => {
+    this.#goLiveButton = document.createElement('button');
+    this.#goLiveButton.type = 'button';
+    this.#goLiveButton.className = 'go-live-btn';
+    this.#goLiveButton.textContent = 'Go live';
+    this.#goLiveButton.addEventListener('click', () => {
       this.#handle?.syncToLive();
     });
 
-    cluster.append(this.#qualityWrap, this.#syncButton);
-    this.#chrome.append(this.#badge, cluster);
+    overlayControls.append(this.#qualityMenu, this.#goLiveButton);
+    this.#overlay.append(this.#typeBadge, overlayControls);
 
     this.#video = document.createElement('video');
     this.#video.playsInline = true;
@@ -201,7 +201,7 @@ export class CastPlayerElement extends HTMLElement {
     track.label = 'Captions';
     this.#video.appendChild(track);
 
-    shadow.append(this.#chrome, this.#video);
+    shadow.append(this.#overlay, this.#video);
   }
 
   get getAccessToken(): GetAccessToken | null {
@@ -270,14 +270,14 @@ export class CastPlayerElement extends HTMLElement {
   #destroyPlayer(): void {
     this.#handle?.destroy();
     this.#handle = null;
-    this.#resetChrome();
+    this.#resetOverlay();
   }
 
-  #resetChrome(): void {
+  #resetOverlay(): void {
     this.#qualitySelect.innerHTML = '';
-    this.#qualityWrap.classList.remove('visible');
-    this.#syncButton.classList.remove('visible');
-    this.#chrome.classList.remove('visible');
+    this.#qualityMenu.classList.remove('visible');
+    this.#goLiveButton.classList.remove('visible');
+    this.#overlay.classList.remove('visible');
   }
 
   #updateQualityOptions(levels: QualityLevel[], currentLevel: number): void {
@@ -295,24 +295,24 @@ export class CastPlayerElement extends HTMLElement {
     }
 
     this.#qualitySelect.value = String(currentLevel);
-    this.#qualityWrap.classList.toggle('visible', levels.length > 0);
-    this.#updateChromeVisibility();
+    this.#qualityMenu.classList.toggle('visible', levels.length > 0);
+    this.#updateOverlayVisibility();
   }
 
-  #updateChromeVisibility(): void {
-    const showSync = this.getAttribute('type') === TYPES.LIVE;
-    this.#syncButton.classList.toggle('visible', showSync);
-    this.#badge.replaceChildren();
-    if (showSync) {
+  #updateOverlayVisibility(): void {
+    const isLive = this.getAttribute('type') === TYPES.LIVE;
+    this.#goLiveButton.classList.toggle('visible', isLive);
+    this.#typeBadge.replaceChildren();
+    if (isLive) {
       const dot = document.createElement('span');
       dot.className = 'live-dot';
-      this.#badge.append(dot, document.createTextNode('LIVE'));
+      this.#typeBadge.append(dot, document.createTextNode('LIVE'));
     } else {
-      this.#badge.textContent = 'VOD';
+      this.#typeBadge.textContent = 'VOD';
     }
-    const showChrome =
-      this.#qualityWrap.classList.contains('visible') || showSync;
-    this.#chrome.classList.toggle('visible', showChrome);
+    const showOverlay =
+      this.#qualityMenu.classList.contains('visible') || isLive;
+    this.#overlay.classList.toggle('visible', showOverlay);
   }
 
   #restart(): void {
@@ -334,7 +334,7 @@ export class CastPlayerElement extends HTMLElement {
       return;
     }
 
-    this.#updateChromeVisibility();
+    this.#updateOverlayVisibility();
 
     this.#handle = createCastPlayer(this.#video, {
       type,
