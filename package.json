@@ -18,16 +18,24 @@
       "import": "./dist/react/index.js",
       "require": "./dist/react/index.cjs",
       "default": "./dist/react/index.js"
+    },
+    "./element": {
+      "types": "./dist/element/index.d.ts",
+      "import": "./dist/element/index.js",
+      "require": "./dist/element/index.cjs",
+      "default": "./dist/element/index.js"
     }
   },
   "typesVersions": {
     "*": {
-      "react": ["./dist/react/index.d.ts"]
+      "react": ["./dist/react/index.d.ts"],
+      "element": ["./dist/element/index.d.ts"]
     }
   },
   "files": [
     "dist",
     "react",
+    "element",
     "README.md"
   ],
   "scripts": {

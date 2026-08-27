@@ -1,14 +1,68 @@
-# stream-web-sdk (`@convay/cast-sdk`)
+# `@convay/cast-sdk`
 
-JavaScript/TypeScript SDK for gated HLS **playback**.
+Browser SDK for **gated HLS playback** — live and on-demand (VOD) streams.
 
-Render `CastPlayer` in the browser. The player never talks to CastAPI. Your app calls **your** server; your server calls CastAPI for short-lived segment tokens.
+You render a player and supply a `getAccessToken` callback that hits **your** server. The SDK **never calls CastAPI**. Secrets stay on the server; the browser only gets short-lived segment tokens.
 
-Stream create, status, and end are **not** part of this SDK — handle those on your server.
+**Status:** Live playback implemented. VOD is designed here (`TYPES.VOD` / `type: 'vod'`) but not shipped in the SDK or CastAPI yet.
 
-VOD (`TYPES.VOD`) is reserved for a later release. This version only plays live streams. Live and VOD both use `streamId`; `type` tells them apart.
+**In scope:** playback auth for live and VOD.  
+**Out of scope:** stream lifecycle (create, upload, transcode, delete, billing) — your app and CastAPI handle those.
 
-## Playback with `CastPlayer`
+---
+
+## Install
+
+```bash
+npm install @convay/cast-sdk hls.js
+# React apps also need:
+npm install react react-dom
+```
+
+Until the package is published:
+
+```bash
+npm install ../stream-web-sdk
+npm install hls.js
+```
+
+`hls.js` is a peer dependency. `react` is only required for `@convay/cast-sdk/react`.
+
+---
+
+## System context
+
+```
+Browser  ──>  Your server  ──>  CastAPI  ──>  CDN (Owncast / Cloudflare)
+```
+
+| System | Role |
+|--------|------|
+| **Your app (browser)** | Renders player, passes `type`, `streamId`, `playbackUrl`, `getAccessToken` |
+| **Your server** | Holds CastAPI JWT; validates viewer; forwards access requests |
+| **CastAPI** | Mints segment tokens; validates ownership of the stream |
+| **CDN** | Serves HLS; validates token + query params on `.ts` requests |
+
+Stream keys, login, upload, status, and end-stream are **your server + CastAPI** concerns — not the SDK.
+
+---
+
+## Choose an integration path
+
+Four paths - **pick one depending upon your implementaion**. Same segment auth for all.
+
+| Path | Import | When to use |
+|------|--------|-------------|
+| **`CastPlayer`** | `@convay/cast-sdk/react` | React apps |
+| **`<cast-player>`** | `@convay/cast-sdk/element` | Vue, Angular, Svelte, plain HTML |
+| **`createCastPlayer`** | `@convay/cast-sdk` | You already have a `<video>` |
+| **Headless helpers** | `@convay/cast-sdk` | Full control over the `hls.js` instance |
+
+React and the web component both use `createCastPlayer` internally. Headless wires `createTokenRefreshFunction` + `createHlsConfig` yourself.
+
+All paths accept `type: TYPES.LIVE | TYPES.VOD` and the same `streamId`.
+
+### 1. React `CastPlayer`
 
 ```tsx
 import { CastPlayer, TYPES } from '@convay/cast-sdk/react';
@@ -19,77 +73,89 @@ import { CastPlayer, TYPES } from '@convay/cast-sdk/react';
   clientId={clientId}
   playbackUrl={viewUrl}
   getAccessToken={async ({ streamId, viewerId }) => {
-    const res = await fetch('/api/cast/access', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ streamId, viewerId }),
-    });
-    if (!res.ok) throw new Error('Access failed');
-    return res.json(); // { token, expiration }
+    // Demo placeholder — replace with a call to your server
+    return { token: '…', expiration: 0 };
   }}
 />
 ```
 
-`viewerId` is optional. If omitted, the SDK stores a UUID in `localStorage` (`cast_sdk:viewer_id`).
-
-`getAccessToken` is called on the first `.ts` request and again about 15 seconds before the token expires. The playlist URL (`playbackUrl`) is loaded without auth. Segment URLs get `token`, `exp`, `stream_id`, `client_id`, and `viewer_id`.
-
-### Props
+VOD uses the same props with `type={TYPES.VOD}`.
 
 | Prop | Required | Notes |
 |------|----------|--------|
-| `type` | yes | `TYPES.LIVE` (only implemented path) |
-| `streamId` | yes | Live stream id (VOD will use the same prop) |
+| `type` | yes | `TYPES.LIVE` (only implemented path today) |
+| `streamId` | yes | Stream id (live or VOD - inferred from `type`) |
 | `clientId` | yes | Account id; attached to `.ts` URLs |
-| `playbackUrl` | yes | HLS `view_url` (`https://host/hls/stream.m3u8`) |
+| `playbackUrl` | yes | HLS playlist URL |
 | `getAccessToken` | yes | Returns `{ token, expiration }` (unix seconds) |
-| `viewerId` | no | Override the SDK-managed viewer id |
+| `viewerId` | no | Override SDK-managed viewer id |
 | `autoPlay` / `muted` / `controls` / `className` / `poster` | no | Passed through to `<video>` |
 | `onError` / `onReady` | no | Fatal HLS errors; manifest parsed |
 
-How you obtain `streamId`, `clientId`, and `playbackUrl` is up to you (your API, a share link, etc.).
+`viewerId` is optional. If omitted, the SDK stores a UUID in `localStorage` (`cast_sdk:viewer_id`).
 
-### Access token contract
+### 2. `<cast-player>` web component
 
-`getAccessToken` receives:
+Import registers the tag. Prefer React `CastPlayer` in React apps.
 
-```ts
-{ type, streamId, clientId, viewerId }
+```html
+<script type="module">
+  import '@convay/cast-sdk/element';
+
+  const el = document.querySelector('cast-player');
+  // Demo placeholder — replace with a call to your server
+  el.getAccessToken = async ({ streamId, viewerId }) => {
+    return { token: '…', expiration: 0 };
+  };
+  el.addEventListener('ready', () => console.log('ready'));
+  el.addEventListener('error', (e) => console.error(e.detail));
+</script>
+
+<cast-player
+  type="live"
+  stream-id="abc123"
+  client-id="partnerClient12"
+  playback-url="https://cdn.example/hls/abc123/stream.m3u8"
+></cast-player>
 ```
 
-Your server should call CastAPI `POST /api/stream/access` with a CastAPI JWT and body `{ stream_id, viewer_id }`, then return `{ token, expiration }` to the browser. Keep the CastAPI JWT on the server.
+`getAccessToken` must be a **JS property** (not an HTML attribute). Events: `ready`, `error` (`detail` is an `Error`).
 
-## Identifiers
+| Attribute | Maps to |
+|-----------|---------|
+| `type` | `live` \| `vod` |
+| `stream-id` | `streamId` |
+| `client-id` | `clientId` |
+| `playback-url` | `playbackUrl` |
+| `viewer-id` | optional |
+| `autoplay` / `muted` / `controls` / `poster` | video element |
 
-| Name | Where it comes from | Role |
-|------|---------------------|------|
-| `clientId` | You pass it into `CastPlayer` | Account that owns the stream; query param on `.ts` |
-| `streamId` | Your app | Stream being played; bound into the segment token |
-| `viewerId` | SDK (`localStorage` UUID) unless you pass one | Viewer fingerprint for token signing |
-| `playbackUrl` | Your app (e.g. `view_url`) | HLS playlist; no auth on manifest |
+### 3. `createCastPlayer` (vanilla)
 
-## Install
+```js
+import { createCastPlayer, TYPES } from '@convay/cast-sdk';
 
-```bash
-npm install @convay/cast-sdk hls.js react
+const player = createCastPlayer(videoElement, {
+  type: TYPES.LIVE,
+  streamId,
+  clientId,
+  playbackUrl,
+  getAccessToken,
+  onError: (err) => console.error(err),
+  onReady: () => console.log('ready'),
+});
+
+// later
+player.destroy();
 ```
 
-Until the package is published:
-
-```bash
-npm install ../stream-web-sdk
-npm install hls.js
-```
-
-`hls.js` and `react` are peer dependencies of the React player.
-
-## Custom / non-React player
+### 4. Headless (own hls.js)
 
 ```js
 import Hls from 'hls.js';
 import { createTokenRefreshFunction, createHlsConfig, TYPES } from '@convay/cast-sdk';
 
-const refresh = createTokenRefreshFunction({
+const tokenRefresh = createTokenRefreshFunction({
   type: TYPES.LIVE,
   streamId,
   clientId,
@@ -97,10 +163,195 @@ const refresh = createTokenRefreshFunction({
   getAccessToken,
 });
 
-const hls = new Hls(createHlsConfig({ playbackUrl, tokenRefresh: refresh }));
+const hls = new Hls(createHlsConfig({ playbackUrl, tokenRefresh }));
 hls.loadSource(playbackUrl);
 hls.attachMedia(videoElement);
 ```
+
+---
+
+## Identifiers
+
+VOD is treated as a stream too. Always use `streamId`; `type` tells live vs VOD.
+
+| Name | Format (live) | Format (VOD) | Where it lives | Role |
+|------|---------------|--------------|----------------|------|
+| `clientId` | 12-char id | same | You pass to SDK | Account that owns the stream; bound into token + query params |
+| `streamId` | 15-char base36 | e.g. `asset_…` | Your app | The stream being played |
+| `viewerId` | UUID | UUID | Browser (`localStorage`) unless overridden | Viewer fingerprint; bound into token |
+| `playbackUrl` | HLS playlist URL | HLS playlist URL | Your app | `.m3u8` URL; loaded **without** auth |
+
+You obtain `streamId`, `clientId`, and `playbackUrl` from your own APIs (share links, CMS, etc.).
+
+### Credentials
+
+| Credential | Lives in | Purpose |
+|------------|----------|---------|
+| CastAPI JWT | Your server only | CastAPI access calls |
+| Segment token | Browser (short TTL, ~2 min) | Query param on `.ts` URLs |
+| `viewerId` | Browser | Bound into segment token |
+
+---
+
+## Playback modes
+
+```ts
+import { TYPES } from '@convay/cast-sdk';
+
+TYPES.LIVE  // live broadcast
+TYPES.VOD   // recorded / on-demand stream
+```
+
+| | **Live** (`TYPES.LIVE`) | **VOD** (`TYPES.VOD`) |
+|--|-------------------------|------------------------|
+| `streamId` means | live stream id | VOD stream id |
+| `playbackUrl` | e.g. `https://cdn/hls/{id}/stream.m3u8` | e.g. `https://cdn/vod/{id}/index.m3u8` |
+| Playlist auth | None | None |
+| Segment auth | Token on `.ts` only | Same model |
+| Segment query param | `stream_id` | `stream_id` |
+| Token refresh | Yes (~15s before expiry) | Yes (same; long streams need refresh) |
+| CDN billing metric | Viewer-minutes | Bytes transferred |
+
+---
+
+## Segment auth
+
+1. **Playlist** (`.m3u8`) — no auth.
+2. **First `.ts` request** — SDK calls `getAccessToken({ type, streamId, clientId, viewerId })` -> your server -> CastAPI.
+3. **Segment URLs** — SDK appends auth query params (below).
+4. **Refresh** — ~15s before expiry (with ±3s jitter).
+
+### Segment query params
+
+| Param | Live | VOD |
+|-------|------|-----|
+| `token` | ✓ | ✓ |
+| `exp` | ✓ (unix seconds) | ✓ |
+| `client_id` | ✓ | ✓ |
+| `viewer_id` | ✓ | ✓ |
+| `stream_id` | ✓ (= `streamId`) | ✓ (= `streamId`) |
+
+Live and VOD use the same query param names. `type` is only used when requesting a token (your server / CastAPI), not on the CDN URL. Minting is CastAPI’s responsibility.
+
+---
+
+## Your server contract
+
+### Browser -> your server
+
+`getAccessToken` receives:
+
+```ts
+{ type: 'live' | 'vod', streamId: string, clientId: string, viewerId: string }
+```
+
+Your server responds:
+
+```json
+{ "token": "<segment-token>", "expiration": 1735689600 }
+```
+
+(`expiration` is unix seconds.)
+
+Example route (conceptual):
+
+```
+POST /api/cast/access
+Body: { type, streamId, viewerId }   // clientId may come from session instead
+```
+
+### Your server -> CastAPI
+
+One access endpoint for live and VOD:
+
+| CastAPI route | Request body | Auth |
+|---------------|--------------|------|
+| `POST /api/stream/access` | `{ type, stream_id, viewer_id }` | `Bearer <CastAPI JWT>` |
+
+`type` is `'live'` or `'vod'`. CastAPI uses it for ownership / playability rules, then returns `{ token, expiration }`.
+
+Keep the CastAPI JWT on the server. Errors propagate via `getAccessToken` throw / non-2xx.
+
+---
+
+## Playback flows
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as Your server
+    participant C as CastAPI
+    participant O as CDN
+
+    B->>O: GET stream.m3u8 or master.m3u8
+    B->>S: getAccessToken(live / vod, streamId, viewerId)
+    S->>C: POST /api/stream/access (type live / vod, Bearer JWT)
+    C-->>S: { token, expiration }
+    S-->>B: { token, expiration }
+    B->>O: GET segment.ts?token&exp&stream_id&client_id&viewer_id
+    Note over B: Refresh ~15s before expiry
+```
+
+---
+
+## Package layout
+
+| Import | Use for |
+|--------|---------|
+| `@convay/cast-sdk` | `createCastPlayer`, HLS helpers, `TYPES`, token refresh |
+| `@convay/cast-sdk/react` | React `CastPlayer` |
+| `@convay/cast-sdk/element` | `<cast-player>` web component |
+
+---
+
+## Security
+
+- **Never** expose the CastAPI JWT to the browser.
+- Your server validates the viewer (session, share token, paywall, etc.) before calling CastAPI access.
+- Only short-lived segment tokens reach the client.
+- Tokens are bound to `client_id`, `stream_id`, and `viewer_id` — CDN rejects mismatched params.
+
+---
+
+## Types (reference)
+
+```ts
+export const TYPES = { LIVE: 'live', VOD: 'vod' } as const;
+
+export type AccessTokenRequest = {
+  type: PlaybackType;
+  streamId: string;
+  clientId: string;
+  viewerId: string;
+};
+
+export type AccessTokenDetails = {
+  token: string;
+  expiration: number; // unix seconds
+};
+
+export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenDetails>;
+```
+
+### Segment `.ts` URL format
+
+Playlists (`.m3u8`) are fetched without auth. Each segment request is rewritten to:
+
+```
+https://cdn.example/{path-to-segment}/segment.ts?token=<token>&exp=<expiration>&stream_id=<streamId>&client_id=<clientId>&viewer_id=<viewerId>
+```
+
+| Query param | Source |
+|-------------|--------|
+| `token` | From `getAccessToken` -> `{ token }` |
+| `exp` | From `getAccessToken` -> `{ expiration }` (unix seconds) |
+| `stream_id` | SDK `streamId` |
+| `client_id` | SDK `clientId` |
+| `viewer_id` | SDK `viewerId` |
+
+Same query shape for live and VOD. `type` is not on the CDN URL.
+
+---
 
 ## Build
 

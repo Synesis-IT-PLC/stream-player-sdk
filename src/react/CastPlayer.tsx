@@ -1,10 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
-import Hls from 'hls.js';
-import { createTokenRefreshFunction } from '../access';
-import { createHlsConfig } from '../hls';
-import { TYPES } from '../types';
+import { useEffect, useRef } from 'react';
+import { createCastPlayer } from '../player';
 import type { GetAccessToken, PlaybackType } from '../types';
-import { getOrCreateViewerId } from '../viewer';
 
 export type CastPlayerProps = {
   type: PlaybackType;
@@ -28,7 +24,7 @@ export function CastPlayer({
   clientId,
   playbackUrl,
   getAccessToken,
-  viewerId: viewerIdProp,
+  viewerId,
   autoPlay,
   muted,
   controls = true,
@@ -45,71 +41,23 @@ export function CastPlayer({
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
-  const viewerId = useMemo(
-    () => viewerIdProp || getOrCreateViewerId(),
-    [viewerIdProp],
-  );
-
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const reportError = (error: Error) => {
-      onErrorRef.current?.(error);
-    };
-
-    if (type === TYPES.VOD) {
-      reportError(new Error('VOD playback is not supported yet'));
-      return;
-    }
-    if (type !== TYPES.LIVE) {
-      reportError(new Error(`Unsupported playback type: ${type}`));
-      return;
-    }
-
-    if (!streamId || !clientId || !playbackUrl) {
-      reportError(new Error('streamId, clientId, and playbackUrl are required'));
-      return;
-    }
-
-    if (!Hls.isSupported()) {
-      reportError(new Error('hls.js is not supported in this browser'));
-      return;
-    }
-
-    let hls: Hls;
-    try {
-      const tokenRefresh = createTokenRefreshFunction({
-        type,
-        streamId,
-        clientId,
-        viewerId,
-        getAccessToken: (ctx) => getAccessTokenRef.current(ctx),
-      });
-      hls = new Hls(createHlsConfig({ playbackUrl, tokenRefresh }));
-    } catch (error) {
-      reportError(error instanceof Error ? error : new Error('Could not start playback'));
-      return;
-    }
-
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      onReadyRef.current?.();
+    const handle = createCastPlayer(video, {
+      type,
+      streamId,
+      clientId,
+      playbackUrl,
+      viewerId,
+      getAccessToken: (ctx) => getAccessTokenRef.current(ctx),
+      onError: (error) => onErrorRef.current?.(error),
+      onReady: () => onReadyRef.current?.(),
     });
-
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (!data?.fatal) return;
-      const message =
-        (data.error instanceof Error && data.error.message) ||
-        data.reason ||
-        'Playback failed';
-      reportError(new Error(message));
-    });
-
-    hls.loadSource(playbackUrl);
-    hls.attachMedia(video);
 
     return () => {
-      hls.destroy();
+      handle.destroy();
     };
   }, [type, streamId, clientId, playbackUrl, viewerId]);
 
