@@ -112,15 +112,16 @@ video {
   background: #fff;
 }
 .overlay button {
-  background: rgba(47, 158, 136, 0.95);
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
-  border: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
-  padding: 7px 12px;
-  font-size: 13px;
-  font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
 }
 .quality-menu {
   display: none;
@@ -134,7 +135,7 @@ video {
   display: none;
 }
 .go-live-btn.visible {
-  display: inline-block;
+  display: inline-flex;
 }
 `;
 
@@ -187,7 +188,13 @@ export class CastPlayerElement extends HTMLElement {
     this.#goLiveButton = document.createElement('button');
     this.#goLiveButton.type = 'button';
     this.#goLiveButton.className = 'go-live-btn';
-    this.#goLiveButton.textContent = 'Go live';
+    this.#goLiveButton.title = 'Seek to live';
+    this.#goLiveButton.setAttribute('aria-label', 'Seek to live');
+    this.#goLiveButton.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">' +
+      '<path d="M2 2.5v9l6.5-4.5L2 2.5Z" />' +
+      '<rect x="10" y="2.5" width="2" height="9" rx="0.5" />' +
+      '</svg>';
     this.#goLiveButton.addEventListener('click', () => {
       this.#handle?.syncToLive();
     });

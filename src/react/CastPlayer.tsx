@@ -119,15 +119,17 @@ const qualityOptionStyle: CSSProperties = {
 };
 
 const goLiveButtonStyle: CSSProperties = {
-  backgroundColor: 'rgba(47, 158, 136, 0.95)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '30px',
+  height: '30px',
+  padding: 0,
+  backgroundColor: 'rgba(255, 255, 255, 0.08)',
   color: '#fff',
-  border: '0',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
   borderRadius: '8px',
-  padding: '7px 12px',
-  fontSize: '13px',
-  fontWeight: 600,
   cursor: 'pointer',
-  whiteSpace: 'nowrap',
 };
 
 export function CastPlayer({
@@ -242,8 +244,13 @@ export function CastPlayer({
                 type="button"
                 style={goLiveButtonStyle}
                 onClick={() => handleRef.current?.syncToLive()}
+                title="Seek to live"
+                aria-label="Seek to live"
               >
-                Go live
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden>
+                  <path d="M2 2.5v9l6.5-4.5L2 2.5Z" />
+                  <rect x="10" y="2.5" width="2" height="9" rx="0.5" />
+                </svg>
               </button>
             )}
           </div>
