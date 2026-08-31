@@ -1,77 +1,32 @@
-import { CastApiError, readJson, unwrapEnvelope } from './http';
-import { getClientIdFromToken } from './jwt';
-import type { AccessTokenDetails, CreateTokenRefreshOptions, TokenRefreshFn } from './types';
-import { getOrCreateViewerId } from './viewer';
+import { TYPES } from './types';
+import type { CallbackTokenRefreshOptions, TokenRefreshFn } from './types';
 
-function accessFailureMessage(status: number, message?: string): string {
-  if (message) return message;
-  if (status === 401) return 'Session expired or unauthorized. Please sign in again.';
-  if (status === 403) return 'You are not allowed to access this stream.';
-  if (status === 404) return 'Stream not found.';
-  if (status === 429) return 'Too many requests. Please try again later.';
-  return 'Could not verify stream access. Please try again.';
+function refreshThresholdWithJitter(): number {
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    return 15;
+  }
+  const rnd = crypto.getRandomValues(new Uint32Array(1))[0]! / 0x100000000;
+  return 15 + rnd * 6 - 3;
 }
 
-export async function requestStreamAccess(options: {
-  accessUrl: string;
-  streamId: string;
-  authToken: string;
-  viewerId?: string;
-  viewerStorageKey?: string;
-}): Promise<AccessTokenDetails> {
-  const { streamId, authToken } = options;
-  if (!streamId || !authToken) {
-    throw new Error('streamId and authToken are required');
-  }
-
-  const viewerId = options.viewerId || getOrCreateViewerId(options.viewerStorageKey);
-  const response = await fetch(options.accessUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${authToken}`,
-    },
-    body: JSON.stringify({ stream_id: streamId, viewer_id: viewerId }),
-  });
-
-  const body = (await readJson(response)) as {
-    success?: boolean;
-    message?: string;
-    data?: { token?: string; expiration?: number };
-  } | null;
-
-  try {
-    const data = unwrapEnvelope(body, response, accessFailureMessage(response.status));
-    if (!data.token || data.expiration == null) {
-      throw new Error('Access granted but no segment token was returned');
-    }
-    return { token: data.token, expiration: data.expiration, viewerId };
-  } catch (error) {
-    if (error instanceof CastApiError) {
-      throw new CastApiError(accessFailureMessage(error.status, error.message), error.status);
-    }
-    throw error;
-  }
+export function needsRefresh(expiry: number, threshold: number): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  return expiry - now <= threshold;
 }
 
-export function createTokenRefreshFunction(options: CreateTokenRefreshOptions & {
-  accessUrl: string;
-  authToken: string;
-  viewerStorageKey?: string;
-}): TokenRefreshFn {
-  const jitterBytes = new Uint32Array(1);
-  crypto.getRandomValues(jitterBytes);
-  const segmentRefreshThreshold = 15 + (jitterBytes[0]! / 0x100000000) * 6 - 3;
+export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions): TokenRefreshFn {
+  const { type, streamId, clientId, viewerId, getAccessToken, extraParams = {} } = options;
 
-  const { streamId, authToken, extraParams = {} } = options;
-  if (!streamId || !authToken) {
-    throw new Error('streamId and authToken are required');
+  if (type !== TYPES.LIVE && type !== TYPES.VOD) {
+    throw new TypeError(`Unsupported playback type: ${type}`);
   }
 
-  const viewerId = options.viewerId || getOrCreateViewerId(options.viewerStorageKey);
-  const clientId = getClientIdFromToken(authToken);
-  if (!clientId) {
-    throw new Error('client_id missing from auth token');
+  if (!streamId || !clientId || !viewerId) {
+    throw new Error('streamId, clientId, and viewerId are required');
+  }
+
+  if (typeof getAccessToken !== 'function') {
+    throw new TypeError('getAccessToken is required');
   }
 
   const segmentAuthParams = {
@@ -85,29 +40,43 @@ export function createTokenRefreshFunction(options: CreateTokenRefreshOptions & 
     ),
   };
 
+  const segmentRefreshThreshold = refreshThresholdWithJitter();
+
   let segmentToken: string | null = null;
   let segmentExpiry = 0;
+  let inFlight: Promise<void> | null = null;
 
-  const needsRefresh = (expiry: number, threshold: number) => {
-    const now = Math.floor(Date.now() / 1000);
-    return expiry - now < threshold;
-  };
+  async function fetchToken(): Promise<void> {
+    const previousToken = segmentToken;
+    const previousExpiry = segmentExpiry;
+    try {
+      const res = await getAccessToken({ type, streamId, clientId, viewerId });
+      if (!res?.token || res.expiration == null || !Number.isFinite(res.expiration)) {
+        throw new Error('Invalid access response: token and expiration are required');
+      }
+      segmentToken = res.token;
+      segmentExpiry = res.expiration;
+    } catch (error) {
+      // Don't wipe a token that another concurrent call already replaced.
+      if (segmentToken === previousToken && segmentExpiry === previousExpiry) {
+        segmentToken = null;
+        segmentExpiry = 0;
+      }
+      throw error;
+    }
+  }
+
+  function refreshShared(): Promise<void> {
+    if (inFlight) return inFlight;
+    inFlight = fetchToken().finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
+  }
 
   return async () => {
     if (!segmentToken || needsRefresh(segmentExpiry, segmentRefreshThreshold)) {
-      try {
-        const res = await requestStreamAccess({
-          accessUrl: options.accessUrl,
-          streamId,
-          authToken,
-          viewerId,
-          viewerStorageKey: options.viewerStorageKey,
-        });
-        segmentToken = res.token;
-        segmentExpiry = res.expiration;
-      } catch (error) {
-        console.error('Error getting segment access:', error);
-      }
+      await refreshShared();
     }
 
     return {
