@@ -2,6 +2,7 @@ import { createCastPlayer } from '../player';
 import type { CastPlayerHandle, QualityLevel } from '../player';
 import { TYPES } from '../types';
 import type { GetAccessToken, PlaybackType } from '../types';
+import { randomId } from '../viewer';
 import { logoBoxStyle, resolveLogo } from '../branding';
 import type { CastLogoOptions } from '../branding';
 
@@ -225,7 +226,7 @@ export class CastPlayerElement extends HTMLElement {
 
     this.#qualityMenu = document.createElement('div');
     this.#qualityMenu.className = 'quality-menu';
-    const qualitySelectId = `cast-quality-select-${crypto.randomUUID()}`;
+    const qualitySelectId = `cast-quality-select-${randomId()}`;
     const qualityLabel = document.createElement('label');
     qualityLabel.htmlFor = qualitySelectId;
     qualityLabel.textContent = 'Quality';

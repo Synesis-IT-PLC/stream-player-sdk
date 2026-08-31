@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { createCastPlayer } from '../player';
 import type { CastPlayerHandle, QualityLevel } from '../player';
 import { TYPES } from '../types';
@@ -198,8 +198,7 @@ export function CastPlayer({
   const [selectedQuality, setSelectedQuality] = useState(-1);
   const [isReady, setIsReady] = useState(false);
   const [posterVisible, setPosterVisible] = useState(true);
-  const qualitySelectIdRef = useRef(`cast-quality-select-${crypto.randomUUID()}`);
-  const qualitySelectId = qualitySelectIdRef.current;
+  const qualitySelectId = `cast-quality-select-${useId()}`;
 
   useEffect(() => {
     const video = videoRef.current;
