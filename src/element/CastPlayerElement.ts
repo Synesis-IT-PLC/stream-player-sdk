@@ -2,6 +2,9 @@ import { createCastPlayer } from '../player';
 import type { CastPlayerHandle, QualityLevel } from '../player';
 import { TYPES } from '../types';
 import type { GetAccessToken, PlaybackType } from '../types';
+import { randomId } from '../viewer';
+import { logoBoxStyle, resolveLogo } from '../branding';
+import type { CastLogoOptions } from '../branding';
 
 export const CAST_PLAYER_TAG = 'cast-player';
 
@@ -14,10 +17,18 @@ const PLAYBACK_ATTRIBUTES = [
   'viewer-id',
 ] as const;
 
-// Changing these only updates the underlying <video>, not HLS playback.
-const VIDEO_ATTRIBUTES = ['autoplay', 'muted', 'controls', 'poster'] as const;
+// Changing these only updates presentation, not HLS playback.
+const PRESENTATION_ATTRIBUTES = [
+  'autoplay',
+  'muted',
+  'controls',
+  'poster',
+  'logo-src',
+  'logo-position',
+  'logo-opacity',
+] as const;
 
-const OBSERVED_ATTRIBUTES = [...PLAYBACK_ATTRIBUTES, ...VIDEO_ATTRIBUTES] as const;
+const OBSERVED_ATTRIBUTES = [...PLAYBACK_ATTRIBUTES, ...PRESENTATION_ATTRIBUTES] as const;
 
 const OVERLAY_STYLES = `
 :host {
@@ -36,6 +47,44 @@ video {
   display: block;
   min-height: 240px;
   background: #000;
+}
+.poster {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  cursor: pointer;
+}
+.poster.visible {
+  display: flex;
+}
+.poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.poster .play-badge {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  color: #fff;
+}
+.logo {
+  display: none;
+}
+.logo.visible {
+  display: block;
 }
 .overlay {
   position: absolute;
@@ -148,9 +197,14 @@ export class CastPlayerElement extends HTMLElement {
   readonly #qualityMenu: HTMLDivElement;
   readonly #qualitySelect: HTMLSelectElement;
   readonly #goLiveButton: HTMLButtonElement;
+  readonly #posterLayer: HTMLDivElement;
+  readonly #posterImage: HTMLImageElement;
+  readonly #logoImage: HTMLImageElement;
   #handle: CastPlayerHandle | null = null;
   #getAccessToken: GetAccessToken | null = null;
   #restartScheduled = false;
+  #posterHidden = false;
+  #logo: CastLogoOptions | null = null;
 
   constructor() {
     super();
@@ -172,7 +226,7 @@ export class CastPlayerElement extends HTMLElement {
 
     this.#qualityMenu = document.createElement('div');
     this.#qualityMenu.className = 'quality-menu';
-    const qualitySelectId = `cast-quality-select-${crypto.randomUUID()}`;
+    const qualitySelectId = `cast-quality-select-${randomId()}`;
     const qualityLabel = document.createElement('label');
     qualityLabel.htmlFor = qualitySelectId;
     qualityLabel.textContent = 'Quality';
@@ -206,7 +260,50 @@ export class CastPlayerElement extends HTMLElement {
     this.#video.playsInline = true;
     this.#video.controls = true;
 
-    shadow.append(this.#overlay, this.#video);
+    this.#posterLayer = document.createElement('div');
+    this.#posterLayer.className = 'poster';
+    this.#posterLayer.setAttribute('role', 'button');
+    this.#posterLayer.tabIndex = 0;
+    this.#posterLayer.setAttribute('aria-label', 'Play');
+    this.#posterImage = document.createElement('img');
+    this.#posterImage.alt = '';
+    const playBadge = document.createElement('span');
+    playBadge.className = 'play-badge';
+    playBadge.innerHTML =
+      '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+      '<path d="M8 5.5v13l11-6.5L8 5.5Z" />' +
+      '</svg>';
+    this.#posterLayer.append(this.#posterImage, playBadge);
+    this.#posterLayer.addEventListener('click', () => this.#playFromPoster());
+    this.#posterLayer.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        this.#playFromPoster();
+      }
+    });
+
+    this.#logoImage = document.createElement('img');
+    this.#logoImage.className = 'logo';
+    this.#logoImage.alt = '';
+
+    this.#video.addEventListener('playing', () => {
+      this.#posterHidden = true;
+      this.#updatePosterVisibility();
+    });
+    const showPoster = () => {
+      this.#posterHidden = false;
+      this.#updatePosterVisibility();
+    };
+    this.#video.addEventListener('ended', showPoster);
+    this.#video.addEventListener('emptied', showPoster);
+
+    shadow.append(this.#posterLayer, this.#logoImage, this.#overlay, this.#video);
+  }
+
+  #playFromPoster(): void {
+    this.#video.play().catch(() => {
+      /* autoplay/gesture rejections surface on the video element itself */
+    });
   }
 
   get getAccessToken(): GetAccessToken | null {
@@ -216,6 +313,15 @@ export class CastPlayerElement extends HTMLElement {
   set getAccessToken(fn: GetAccessToken | null) {
     this.#getAccessToken = fn;
     this.#scheduleRestart();
+  }
+
+  get logo(): CastLogoOptions | null {
+    return this.#logo;
+  }
+
+  set logo(value: CastLogoOptions | null) {
+    this.#logo = value;
+    this.#applyBranding();
   }
 
   syncToLive(): void {
@@ -237,6 +343,7 @@ export class CastPlayerElement extends HTMLElement {
 
   connectedCallback(): void {
     this.#applyVideoAttrs();
+    this.#applyBranding();
     this.#scheduleRestart();
   }
 
@@ -245,8 +352,9 @@ export class CastPlayerElement extends HTMLElement {
   }
 
   attributeChangedCallback(name: string): void {
-    if ((VIDEO_ATTRIBUTES as readonly string[]).includes(name)) {
+    if ((PRESENTATION_ATTRIBUTES as readonly string[]).includes(name)) {
       this.#applyVideoAttrs();
+      this.#applyBranding();
       return;
     }
     this.#scheduleRestart();
@@ -263,6 +371,40 @@ export class CastPlayerElement extends HTMLElement {
     } else {
       this.#video.removeAttribute('poster');
     }
+  }
+
+  #applyBranding(): void {
+    const poster = this.getAttribute('poster');
+    if (poster) {
+      this.#posterImage.src = poster;
+    } else {
+      this.#posterImage.removeAttribute('src');
+    }
+    this.#updatePosterVisibility();
+
+    const opacityAttr = this.getAttribute('logo-opacity');
+    const resolved = resolveLogo(
+      this.#logo ?? {
+        src: this.getAttribute('logo-src') ?? '',
+        position: (this.getAttribute('logo-position') as CastLogoOptions['position']) ?? undefined,
+        opacity: opacityAttr === null ? undefined : Number.parseFloat(opacityAttr),
+      },
+    );
+
+    this.#logoImage.removeAttribute('style');
+    if (!resolved) {
+      this.#logoImage.removeAttribute('src');
+      this.#logoImage.classList.remove('visible');
+      return;
+    }
+    this.#logoImage.src = resolved.src;
+    Object.assign(this.#logoImage.style, logoBoxStyle(resolved));
+    this.#logoImage.classList.add('visible');
+  }
+
+  #updatePosterVisibility(): void {
+    const hasPoster = Boolean(this.#posterImage.getAttribute('src'));
+    this.#posterLayer.classList.toggle('visible', hasPoster && !this.#posterHidden);
   }
 
   #scheduleRestart(): void {
@@ -325,6 +467,8 @@ export class CastPlayerElement extends HTMLElement {
 
   #restart(): void {
     this.#destroyPlayer();
+    this.#posterHidden = false;
+    this.#updatePosterVisibility();
 
     const type = this.getAttribute('type') as PlaybackType | null;
     const streamId = this.getAttribute('stream-id');
@@ -372,6 +516,8 @@ export class CastPlayerElement extends HTMLElement {
   }
 
   #dispatchError(error: Error): void {
+    this.#posterHidden = false;
+    this.#updatePosterVisibility();
     this.dispatchEvent(
       new CustomEvent('error', {
         detail: error,

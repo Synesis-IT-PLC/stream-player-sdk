@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { createCastPlayer } from '../player';
 import type { CastPlayerHandle, QualityLevel } from '../player';
 import { TYPES } from '../types';
 import type { GetAccessToken, PlaybackType } from '../types';
+import { logoBoxStyle, resolveLogo } from '../branding';
+import type { CastLogoOptions } from '../branding';
 
 export type CastPlayerProps = {
   type: PlaybackType;
@@ -16,6 +18,7 @@ export type CastPlayerProps = {
   controls?: boolean;
   className?: string;
   poster?: string;
+  logo?: CastLogoOptions;
   onError?: (error: Error) => void;
   onReady?: () => void;
 };
@@ -118,6 +121,40 @@ const qualityOptionStyle: CSSProperties = {
   color: '#111',
 };
 
+const posterLayerStyle: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: 10,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#000',
+  cursor: 'pointer',
+};
+
+const posterImageStyle: CSSProperties = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  display: 'block',
+};
+
+const posterPlayStyle: CSSProperties = {
+  position: 'absolute',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '64px',
+  height: '64px',
+  borderRadius: '50%',
+  border: '1px solid rgba(255, 255, 255, 0.28)',
+  backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  backdropFilter: 'blur(8px)',
+  color: '#fff',
+  cursor: 'pointer',
+  padding: 0,
+};
+
 const goLiveButtonStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -144,6 +181,7 @@ export function CastPlayer({
   controls = true,
   className,
   poster,
+  logo,
   onError,
   onReady,
 }: Readonly<CastPlayerProps>) {
@@ -159,8 +197,8 @@ export function CastPlayer({
   const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
   const [selectedQuality, setSelectedQuality] = useState(-1);
   const [isReady, setIsReady] = useState(false);
-  const qualitySelectIdRef = useRef(`cast-quality-select-${crypto.randomUUID()}`);
-  const qualitySelectId = qualitySelectIdRef.current;
+  const [posterVisible, setPosterVisible] = useState(true);
+  const qualitySelectId = `cast-quality-select-${useId()}`;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -174,7 +212,10 @@ export function CastPlayer({
       playbackUrl,
       viewerId,
       getAccessToken: (ctx) => getAccessTokenRef.current(ctx),
-      onError: (error) => onErrorRef.current?.(error),
+      onError: (error) => {
+        setPosterVisible(true);
+        onErrorRef.current?.(error);
+      },
       onReady: () => {
         setIsReady(true);
         onReadyRef.current?.();
@@ -190,11 +231,43 @@ export function CastPlayer({
       setQualityLevels([]);
       setSelectedQuality(-1);
       setIsReady(false);
+      setPosterVisible(true);
     };
   }, [type, streamId, clientId, playbackUrl, viewerId]);
 
+  // Kept separate from player creation so poster/logo changes never restart HLS.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const hide = () => setPosterVisible(false);
+    const show = () => setPosterVisible(true);
+
+    video.addEventListener('playing', hide);
+    video.addEventListener('ended', show);
+    video.addEventListener('emptied', show);
+
+    if (!video.paused && video.currentTime > 0) {
+      setPosterVisible(false);
+    }
+
+    return () => {
+      video.removeEventListener('playing', hide);
+      video.removeEventListener('ended', show);
+      video.removeEventListener('emptied', show);
+    };
+  }, []);
+
   const isLive = type === TYPES.LIVE;
   const showOverlay = qualityLevels.length > 0 || isLive;
+  const resolvedLogo = resolveLogo(logo);
+  const showPoster = Boolean(poster) && posterVisible;
+
+  const playFromPoster = () => {
+    videoRef.current?.play().catch(() => {
+      /* autoplay/gesture rejections are surfaced by the video element itself */
+    });
+  };
 
   return (
     <div style={containerStyle} className={className}>
@@ -255,6 +328,35 @@ export function CastPlayer({
             )}
           </div>
         </div>
+      )}
+      {showPoster && (
+        <div
+          style={posterLayerStyle}
+          onClick={playFromPoster}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              playFromPoster();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Play"
+        >
+          <img src={poster} alt="" style={posterImageStyle} />
+          <span style={posterPlayStyle} aria-hidden>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M8 5.5v13l11-6.5L8 5.5Z" />
+            </svg>
+          </span>
+        </div>
+      )}
+      {resolvedLogo && (
+        <img
+          src={resolvedLogo.src}
+          alt=""
+          style={logoBoxStyle(resolvedLogo) as CSSProperties}
+        />
       )}
       <video
         ref={videoRef}

@@ -14,6 +14,10 @@ export function needsRefresh(expiry: number, threshold: number): boolean {
   return expiry - now <= threshold;
 }
 
+function hasExpired(expiry: number): boolean {
+  return expiry <= Math.floor(Date.now() / 1000);
+}
+
 export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions): TokenRefreshFn {
   const { type, streamId, clientId, viewerId, getAccessToken, extraParams = {} } = options;
 
@@ -57,8 +61,9 @@ export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions)
       segmentToken = res.token;
       segmentExpiry = res.expiration;
     } catch (error) {
-      // Don't wipe a token that another concurrent call already replaced.
-      if (segmentToken === previousToken && segmentExpiry === previousExpiry) {
+      // Don't wipe a token another concurrent call replaced, or one still valid.
+      const stillOurs = segmentToken === previousToken && segmentExpiry === previousExpiry;
+      if (stillOurs && hasExpired(previousExpiry)) {
         segmentToken = null;
         segmentExpiry = 0;
       }
@@ -76,7 +81,14 @@ export function createTokenRefreshFunction(options: CallbackTokenRefreshOptions)
 
   return async () => {
     if (!segmentToken || needsRefresh(segmentExpiry, segmentRefreshThreshold)) {
-      await refreshShared();
+      try {
+        await refreshShared();
+      } catch (error) {
+        // Refresh runs ~15s early, so serve out the current token and retry later.
+        if (!segmentToken || hasExpired(segmentExpiry)) {
+          throw error;
+        }
+      }
     }
 
     return {

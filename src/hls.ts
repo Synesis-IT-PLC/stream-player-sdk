@@ -85,11 +85,10 @@ export function createSegmentXhrSetup(options: {
   const threshold = options.refreshThreshold ?? 15;
 
   return async function xhrSetup(xhr, url) {
-    if (!url.includes('.m3u8') && !url.includes('.ts')) return;
-
-    await refreshTokensIfNeeded(tokenState, options.tokenRefresh, threshold);
 
     if (!url.includes('.ts')) return;
+
+    await refreshTokensIfNeeded(tokenState, options.tokenRefresh, threshold);
 
     const authenticatedUrl = appendAuthParams(
       url,
