@@ -136,7 +136,9 @@ For VOD: `type={TYPES.VOD}` with that asset’s `streamId` / `playbackUrl`.
 | `playbackUrl` | yes | HLS `.m3u8` URL |
 | `getAccessToken` | yes | See shared contract above |
 | `viewerId` | no | Else UUID in `localStorage` (`cast_sdk:viewer_id`) |
-| `autoPlay` / `muted` / `controls` / `className` / `poster` | no | Video / wrapper |
+| `autoPlay` / `muted` / `controls` / `className` | no | Video / wrapper |
+| `poster` | no | Image URL, see [Branding](#branding) |
+| `logo` | no | `{ src, position?, opacity? }`, see [Branding](#branding) |
 | `onError` / `onReady` | no | Fatal errors; manifest parsed |
 
 Built-in UI: quality select (Auto + ladder), LIVE badge, **Go live** (live only).
@@ -173,11 +175,57 @@ For non-React frameworks. Import once to register the custom element.
 | `client-id` | `clientId` |
 | `playback-url` | `playbackUrl` |
 | `viewer-id` | optional |
-| `autoplay` / `muted` / `controls` / `poster` | `<video>` |
+| `autoplay` / `muted` / `controls` | `<video>` |
+| `poster` / `logo-src` / `logo-position` / `logo-opacity` | Branding, see below |
 
 Events: `ready`, `error` (`detail: Error`), `levels` (`detail: QualityLevel[]`).  
 Methods: `syncToLive()`, `setLevel(n)`, `getLevels()`, `getCurrentLevel()`.  
+Properties: `getAccessToken`, `logo` (set `{ src, position, opacity }` instead of the three attributes).  
 Same chrome as React (quality + Go live).
+
+---
+
+### Branding
+
+Both optional, both updatable at runtime — changing either only re-renders the
+overlay, it never restarts HLS playback.
+
+**Poster** — an image URL. It covers the player before the first frame plays,
+and comes back when playback ends or a fatal error occurs. Clicking it starts
+playback.
+
+**Logo** — a client watermark drawn over the video.
+
+| Option | Default | Notes |
+|--------|---------|-------|
+| `src` | — | Required; without it nothing is rendered |
+| `position` | `top-right` | `top-left` \| `top-right` \| `bottom-left` \| `bottom-right` |
+| `opacity` | `0.85` | Clamped to `0..1` |
+
+Height is fixed at 9% of the player (capped at 40% width) so the logo scales
+with the video, and it is click-through so it never blocks the controls. Note
+`top-left` sits beneath the LIVE/VOD badge and the bottom corners sit beneath
+the native controls.
+
+```tsx
+<CastPlayer
+  /* … */
+  poster="https://cdn.example/poster.jpg"
+  logo={{ src: 'https://cdn.example/logo.png', position: 'bottom-right', opacity: 0.7 }}
+/>
+```
+
+```html
+<cast-player
+  poster="https://cdn.example/poster.jpg"
+  logo-src="https://cdn.example/logo.png"
+  logo-position="bottom-right"
+  logo-opacity="0.7"
+></cast-player>
+```
+
+Not available in the vanilla `createCastPlayer` path — it does not own any DOM
+beyond the `<video>` you pass in.
 
 ---
 
