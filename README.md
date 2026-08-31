@@ -203,9 +203,9 @@ playback.
 | `opacity` | `0.85` | Clamped to `0..1` |
 
 Height is fixed at 9% of the player (capped at 40% width) so the logo scales
-with the video, and it is click-through so it never blocks the controls. Note
-`top-left` sits beneath the LIVE/VOD badge and the bottom corners sit beneath
-the native controls.
+with the video, and it is click-through so it never blocks the controls. Top
+placements sit below the badge / quality row so the built-in chrome never covers
+the logo.
 
 ```tsx
 <CastPlayer

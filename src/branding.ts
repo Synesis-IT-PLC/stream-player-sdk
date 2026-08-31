@@ -18,6 +18,8 @@ export const LOGO_DEFAULTS = {
   /** Height relative to the player box, so the logo scales with the video. */
   size: '9%',
   margin: '12px',
+  /** Clears the badge/quality row so a top-placed logo is not drawn under it. */
+  topMargin: '56px',
 } as const;
 
 const POSITIONS: ReadonlySet<LogoPosition> = new Set<LogoPosition>([
@@ -45,12 +47,12 @@ export function resolveLogo(logo: CastLogoOptions | null | undefined): ResolvedL
 }
 
 export function logoBoxStyle(logo: ResolvedLogo): Record<string, string> {
-  const { margin } = LOGO_DEFAULTS;
+  const { margin, topMargin } = LOGO_DEFAULTS;
   const isTop = logo.position.startsWith('top');
   const isLeft = logo.position.endsWith('left');
   return {
     position: 'absolute',
-    top: isTop ? margin : 'auto',
+    top: isTop ? topMargin : 'auto',
     bottom: isTop ? 'auto' : margin,
     left: isLeft ? margin : 'auto',
     right: isLeft ? 'auto' : margin,
