@@ -86,6 +86,9 @@ sequenceDiagram
     participant C as CastAPI
     participant O as CDN
 
+    Note over S,C: Your server caches CastAPI JWT (never send to the browser)
+    S->>C: POST /api/auth/token {email, password}
+    C-->>S: { data: JWT }
     B->>O: GET playlist.m3u8 (no auth)
     Note over B: First .ts request triggers access
     B->>S: getAccessToken(type, streamId, clientId, viewerId)
@@ -133,6 +136,22 @@ SDK calls this on the first `.ts` request and again ~15s before token expiry.
 
 **Browser -> your server (example):**
 
+1. Get JWT (your server → CastAPI; cache it, never send it to the browser)
+
+```ts
+async function getCastApiJwt() {
+  const res = await fetch('https://dev-cast.convay.com/cast/api/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: CASTAPI_EMAIL, password: CASTAPI_PASSWORD }),
+  });
+  if (!res.ok) throw new Error('CastAPI login failed');
+  const json = await res.json();
+  return json.data; // JWT string
+}
+```
+
+2. Get Access Token
 ```ts
 async function getAccessToken({ type, streamId, clientId, viewerId }) {
   // SDK always passes all four fields. Forward what your server needs.
@@ -151,6 +170,10 @@ async function getAccessToken({ type, streamId, clientId, viewerId }) {
 **Your server -> CastAPI:**
 
 ```
+POST https://dev-cast.convay.com/cast/api/auth/token
+Body: { email, password }
+-> envelope data: "<jwt>"
+
 POST https://dev-cast.convay.com/cast/api/stream/access
 Authorization: Bearer <CastAPI JWT>
 Body: { stream_id, viewer_id }
