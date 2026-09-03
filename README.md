@@ -21,13 +21,38 @@ npm install @convay/cast-sdk hls.js
 npm install react react-dom
 ```
 
-Until published: `npm install ../stream-web-sdk` then `npm install hls.js`.
-
 | Import | Peer deps |
 |--------|-----------|
 | `@convay/cast-sdk` | `hls.js` |
 | `@convay/cast-sdk/react` | `hls.js`, `react`, `react-dom` |
 | `@convay/cast-sdk/element` | `hls.js` |
+
+### Local integration (before npm publish)
+
+```bash
+# In this repo
+npm install
+npm run build
+```
+
+Then in your app’s `package.json`:
+
+```json
+{
+  "dependencies": {
+    "@convay/cast-sdk": "file:<path-to-stream-player-sdk>",
+    "hls.js": "^1.6.15"
+  }
+}
+```
+
+Adjust the relative path to where you cloned this repo, then:
+
+```bash
+npm install
+```
+
+After SDK source changes, run `npm run build` in this repo again, then re-run `npm install` in your app.
 
 ---
 
@@ -375,3 +400,5 @@ export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenDet
 ```bash
 cd stream-web-sdk && npm install && npm run build
 ```
+
+For consuming the package from another local app before publish, see [Local integration](#local-integration-before-npm-publish).
