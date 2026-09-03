@@ -10,49 +10,55 @@ You render a player and supply `getAccessToken` that calls **your** server. The 
 | **Out of scope** | Stream create / upload / status / end / billing |
 | **Status** | Live and VOD types work in the SDK (`TYPES.LIVE` / `TYPES.VOD`). Your server/CastAPI must support access for that `streamId`. |
 | **Limitation** | Requires `hls.js` (`Hls.isSupported()`). No native Safari HLS fallback yet. |
+| **Distribution** | Build this repo and depend on it with `file:`. |
 
 ---
 
-## Install
+## Setup (local)
+
+### 1. Build the SDK
 
 ```bash
-npm install @convay/cast-sdk hls.js
-# React only:
-npm install react react-dom
-```
-
-| Import | Peer deps |
-|--------|-----------|
-| `@convay/cast-sdk` | `hls.js` |
-| `@convay/cast-sdk/react` | `hls.js`, `react`, `react-dom` |
-| `@convay/cast-sdk/element` | `hls.js` |
-
-### Local integration (before npm publish)
-
-```bash
-# In this repo
+cd stream-player-sdk
 npm install
 npm run build
 ```
 
-Then in your app’s `package.json`:
+This produces `dist/` (and the `react/` / `element/` entry stubs). Rebuild after any SDK source change.
+
+### 2. Point your app at the local package
+
+In your app’s `package.json`:
 
 ```json
 {
   "dependencies": {
-    "@convay/cast-sdk": "file:<path-to-stream-player-sdk>",
+    "@convay/cast-sdk": "file:../path-to/stream-player-sdk",
     "hls.js": "^1.6.15"
   }
 }
 ```
 
-Adjust the relative path to where you cloned this repo, then:
+For React apps, also ensure `react` and `react-dom` (`>=18`) are installed.
+
+Then in the app:
 
 ```bash
 npm install
 ```
 
-After SDK source changes, run `npm run build` in this repo again, then re-run `npm install` in your app.
+After SDK rebuilds, re-run `npm install` in the app so it picks up the new `dist/`.
+
+### Import map
+
+| Import | Also needs |
+|--------|------------|
+| `@convay/cast-sdk` | `hls.js` `^1.0.0` (tested with `^1.6.15`) |
+| `@convay/cast-sdk/react` | `hls.js`, `react` `>=18`, `react-dom` `>=18` |
+| `@convay/cast-sdk/element` | `hls.js` |
+
+Prefer `@convay/cast-sdk/react` for React apps. The root entry also re-exports
+`CastPlayer` and branding helpers, but `/react` is the supported React path.
 
 ---
 
@@ -107,13 +113,14 @@ SDK calls this on the first `.ts` request and again ~15s before token expiry.
 **Browser -> your server (example):**
 
 ```ts
-async function getAccessToken({ type, streamId, viewerId }) {
-  // `type` is for your server (live vs vod routing / checks). CastAPI access body does not use it today.
+async function getAccessToken({ type, streamId, clientId, viewerId }) {
+  // SDK always passes all four fields. Forward what your server needs.
+  // `type` / `clientId` are for your server. CastAPI access body does not use them today.
   const res = await fetch('/api/cast/access', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type, streamId, viewerId }),
+    body: JSON.stringify({ type, streamId, clientId, viewerId }),
   });
   if (!res.ok) throw new Error('Access failed');
   return res.json(); // { token, expiration }
@@ -129,7 +136,8 @@ Body: { stream_id, viewer_id }
 -> envelope data: { token, expiration }
 ```
 
-`type` stays between the browser and your server (and any VOD-specific logic you add). CastAPI’s access endpoint currently takes only `stream_id` + `viewer_id`.
+`type` and `clientId` stay between the browser and your server (and any VOD-specific
+logic you add). CastAPI’s access endpoint currently takes only `stream_id` + `viewer_id`.
 
 Never put the CastAPI JWT in the browser.
 
@@ -161,12 +169,14 @@ For VOD: `type={TYPES.VOD}` with that asset’s `streamId` / `playbackUrl`.
 | `playbackUrl` | yes | HLS `.m3u8` URL |
 | `getAccessToken` | yes | See shared contract above |
 | `viewerId` | no | Else UUID in `localStorage` (`cast_sdk:viewer_id`) |
-| `autoPlay` / `muted` / `controls` / `className` | no | Video / wrapper |
+| `autoPlay` / `muted` / `className` | no | Video / wrapper |
+| `controls` | no | Defaults to `true` |
 | `poster` | no | Image URL, see [Branding](#branding) |
 | `logo` | no | `{ src, position?, opacity? }`, see [Branding](#branding) |
 | `onError` / `onReady` | no | Fatal errors; manifest parsed |
 
-Built-in UI: quality select (Auto + ladder), LIVE badge, **Go live** (live only).
+Built-in UI: quality select (Auto + ladder), LIVE / VOD badge, seek-to-live control
+(live only; icon button, “Seek to live”).
 
 ---
 
@@ -200,13 +210,17 @@ For non-React frameworks. Import once to register the custom element.
 | `client-id` | `clientId` |
 | `playback-url` | `playbackUrl` |
 | `viewer-id` | optional |
-| `autoplay` / `muted` / `controls` | `<video>` |
+| `autoplay` / `muted` | `<video>` boolean attributes |
+| `controls` | Defaults on; set `controls="false"` to hide |
 | `poster` / `logo-src` / `logo-position` / `logo-opacity` | Branding, see below |
 
 Events: `ready`, `error` (`detail: Error`), `levels` (`detail: QualityLevel[]`).  
 Methods: `syncToLive()`, `setLevel(n)`, `getLevels()`, `getCurrentLevel()`.  
 Properties: `getAccessToken`, `logo` (set `{ src, position, opacity }` instead of the three attributes).  
-Same chrome as React (quality + Go live).
+Same chrome as React (quality + LIVE/VOD badge + seek-to-live).
+
+Also exported (advanced): `CastPlayerElement`, `defineCastPlayer(tagName?)`,
+`CAST_PLAYER_TAG`. Importing the module auto-registers `<cast-player>`.
 
 ---
 
@@ -307,14 +321,29 @@ const tokenRefresh = createTokenRefreshFunction({
   getAccessToken,
 });
 
-const hls = new Hls(createHlsConfig({ playbackUrl, tokenRefresh }));
+const hls = new Hls(
+  createHlsConfig({
+    playbackUrl,
+    tokenRefresh,
+    // optional: refreshThreshold: 15, // seconds before exp to refresh (default 15)
+  }),
+);
 hls.loadSource(playbackUrl);
 hls.attachMedia(videoElement);
 
 // later: hls.destroy();
 ```
 
-`createHlsConfig` installs `xhrSetup` that refreshes the token and appends query params on `.ts` requests. Playlists stay unauthenticated.
+`createHlsConfig` installs `xhrSetup` that refreshes the token and appends query
+params on `.ts` requests. Playlists stay unauthenticated.
+
+Also available from `@convay/cast-sdk` for custom `hls.js` wiring:
+
+| Helper | Role |
+|--------|------|
+| `createSegmentXhrSetup({ playbackUrl, tokenRefresh, refreshThreshold? })` | Standalone `xhrSetup` (same auth as `createHlsConfig`) |
+| `appendAuthParams(url, playbackUrl, tokenState, extraParams?)` | Rewrite a segment URL with auth query params |
+| `getOrCreateViewerId(storageKey?)` | Default key `cast_sdk:viewer_id`; override if you need isolation |
 
 ---
 
@@ -354,13 +383,14 @@ sequenceDiagram
     participant C as CastAPI
     participant O as CDN
 
-    B->>S: getAccessToken(type, streamId, viewerId)
-    B->>O: GET playlist.m3u8
+    B->>O: GET playlist.m3u8 (no auth)
+    Note over B: First .ts request triggers access
+    B->>S: getAccessToken(type, streamId, clientId, viewerId)
     S->>C: POST /api/stream/access (Bearer JWT)
     C-->>S: { token, expiration }
     S-->>B: { token, expiration }
     B->>O: GET segment.ts?token&exp&stream_id&client_id&viewer_id
-    Note over B: Refresh ~15s before expiry
+    Note over B: Refresh ~15s before expiry (with jitter)
 ```
 
 ---
@@ -374,6 +404,8 @@ sequenceDiagram
 ---
 
 ## Types (reference)
+
+Core access contract (all paths):
 
 ```ts
 export const TYPES = { LIVE: 'live', VOD: 'vod' } as const;
@@ -393,12 +425,7 @@ export type AccessTokenDetails = {
 export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenDetails>;
 ```
 
----
-
-## Build (contributors)
-
-```bash
-cd stream-web-sdk && npm install && npm run build
-```
-
-For consuming the package from another local app before publish, see [Local integration](#local-integration-before-npm-publish).
+Also exported from `@convay/cast-sdk` (see source / `.d.ts` for full shapes):
+`CastPlayerOptions`, `CastPlayerHandle`, `QualityLevel`, `CallbackTokenRefreshOptions`
+(includes optional `extraParams`), `TokenRefreshFn`, branding types
+(`CastLogoOptions`, `LogoPosition`).
