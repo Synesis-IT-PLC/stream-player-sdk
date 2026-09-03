@@ -6,8 +6,6 @@ You render a player and supply `getAccessToken` that calls **your** server. The 
 
 | | |
 |--|--|
-| **In scope** | Playback + segment auth |
-| **Out of scope** | Stream create / upload / status / end / billing |
 | **Status** | Live and VOD types work in the SDK (`TYPES.LIVE` / `TYPES.VOD`). Your server/CastAPI must support access for that `streamId`. |
 | **Limitation** | Requires `hls.js` (`Hls.isSupported()`). No native Safari HLS fallback yet. |
 | **Distribution** | Build this repo and depend on it with `file:`. |
@@ -79,6 +77,27 @@ You supply `streamId`, `clientId`, and `playbackUrl` from your own APIs.
 
 ---
 
+## Playback flow
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as Your server
+    participant C as CastAPI
+    participant O as CDN
+
+    B->>O: GET playlist.m3u8 (no auth)
+    Note over B: First .ts request triggers access
+    B->>S: getAccessToken(type, streamId, clientId, viewerId)
+    S->>C: POST /api/stream/access (Bearer JWT)
+    C-->>S: { token, expiration }
+    S-->>B: { token, expiration }
+    B->>O: GET segment.ts?token&exp&stream_id&client_id&viewer_id
+    Note over B: Refresh ~15s before expiry (with jitter)
+```
+
+---
+
 ## Choose one integration path
 
 | Your stack | Use | Import |
@@ -93,6 +112,8 @@ Same `getAccessToken` contract and segment auth for all four. Paths 1–2 wrap p
 Every path needs: `type`, `streamId`, `clientId`, `playbackUrl`, `getAccessToken`.
 
 ---
+
+## Client Backend Integration
 
 ### Shared: `getAccessToken` (required for all paths)
 
@@ -116,10 +137,10 @@ SDK calls this on the first `.ts` request and again ~15s before token expiry.
 async function getAccessToken({ type, streamId, clientId, viewerId }) {
   // SDK always passes all four fields. Forward what your server needs.
   // `type` / `clientId` are for your server. CastAPI access body does not use them today.
-  const res = await fetch('/api/cast/access', {
+  const res = await fetch('https://dev-cast.convay.com/cast/api/cast/access', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer <JWT>' },
     body: JSON.stringify({ type, streamId, clientId, viewerId }),
   });
   if (!res.ok) throw new Error('Access failed');
@@ -130,7 +151,7 @@ async function getAccessToken({ type, streamId, clientId, viewerId }) {
 **Your server -> CastAPI:**
 
 ```
-POST /api/stream/access
+POST https://dev-cast.convay.com/cast/api/stream/access
 Authorization: Bearer <CastAPI JWT>
 Body: { stream_id, viewer_id }
 -> envelope data: { token, expiration }
@@ -143,6 +164,8 @@ Never put the CastAPI JWT in the browser.
 
 ---
 
+## Client Frontend Integration
+
 ### 1. React — `CastPlayer`
 
 ```tsx
@@ -153,7 +176,7 @@ import { CastPlayer, TYPES } from '@convay/cast-sdk/react';
   streamId={streamId}
   clientId={clientId}
   playbackUrl={playbackUrl}
-  getAccessToken={getAccessToken}
+  getAccessToken={getAccessTokenCallback}
   onError={(err) => console.error(err)}
   onReady={() => console.log('ready')}
 />
@@ -180,6 +203,29 @@ Built-in UI: quality select (Auto + ladder), LIVE / VOD badge, seek-to-live cont
 
 ---
 
+## Types (reference)
+
+Core access contract (all paths):
+
+```ts
+export const TYPES = { LIVE: 'live', VOD: 'vod' } as const;
+
+export type AccessTokenRequest = {
+  type: 'live' | 'vod';
+  streamId: string;
+  clientId: string;
+  viewerId: string;
+};
+
+export type AccessTokenDetails = {
+  token: string;
+  expiration: number; // unix seconds
+};
+
+export type GetAccessTokenCallback = (ctx: AccessTokenRequest) => Promise<AccessTokenDetails>;
+```
+---
+
 ### 2. Web component — `<cast-player>`
 
 For non-React frameworks. Import once to register the custom element.
@@ -189,7 +235,7 @@ For non-React frameworks. Import once to register the custom element.
   import '@convay/cast-sdk/element';
 
   const el = document.querySelector('cast-player');
-  el.getAccessToken = getAccessToken; // must be a JS property, not an HTML attribute
+  el.getAccessToken = getAccessTokenCallback; // must be a JS property, not an HTML attribute
   el.addEventListener('ready', () => console.log('ready'));
   el.addEventListener('error', (e) => console.error(e.detail));
   el.addEventListener('levels', (e) => console.log(e.detail));
@@ -221,50 +267,6 @@ Same chrome as React (quality + LIVE/VOD badge + seek-to-live).
 
 Also exported (advanced): `CastPlayerElement`, `defineCastPlayer(tagName?)`,
 `CAST_PLAYER_TAG`. Importing the module auto-registers `<cast-player>`.
-
----
-
-### Branding
-
-Both optional, both updatable at runtime — changing either only re-renders the
-overlay, it never restarts HLS playback.
-
-**Poster** — an image URL. It covers the player before the first frame plays,
-and comes back when playback ends or a fatal error occurs. Clicking it starts
-playback.
-
-**Logo** — a client watermark drawn over the video.
-
-| Option | Default | Notes |
-|--------|---------|-------|
-| `src` | — | Required; without it nothing is rendered |
-| `position` | `top-right` | `top-left` \| `top-right` \| `bottom-left` \| `bottom-right` |
-| `opacity` | `0.85` | Clamped to `0..1` |
-
-Height is fixed at 9% of the player (capped at 40% width) so the logo scales
-with the video, and it is click-through so it never blocks the controls. Top
-placements sit below the badge / quality row so the built-in chrome never covers
-the logo.
-
-```tsx
-<CastPlayer
-  /* … */
-  poster="https://cdn.example/poster.jpg"
-  logo={{ src: 'https://cdn.example/logo.png', position: 'bottom-right', opacity: 0.7 }}
-/>
-```
-
-```html
-<cast-player
-  poster="https://cdn.example/poster.jpg"
-  logo-src="https://cdn.example/logo.png"
-  logo-position="bottom-right"
-  logo-opacity="0.7"
-></cast-player>
-```
-
-Not available in the vanilla `createCastPlayer` path — it does not own any DOM
-beyond the `<video>` you pass in.
 
 ---
 
@@ -372,26 +374,50 @@ Also available from `@convay/cast-sdk` for custom `hls.js` wiring:
 
 `type` is sent to your server via `getAccessToken`; it is not on the CDN URL. CastAPI access uses `{ stream_id, viewer_id }` only.
 
+
 ---
 
-## Playback flow
+## Branding
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant S as Your server
-    participant C as CastAPI
-    participant O as CDN
+Both optional, both updatable at runtime — changing either only re-renders the
+overlay, it never restarts HLS playback.
 
-    B->>O: GET playlist.m3u8 (no auth)
-    Note over B: First .ts request triggers access
-    B->>S: getAccessToken(type, streamId, clientId, viewerId)
-    S->>C: POST /api/stream/access (Bearer JWT)
-    C-->>S: { token, expiration }
-    S-->>B: { token, expiration }
-    B->>O: GET segment.ts?token&exp&stream_id&client_id&viewer_id
-    Note over B: Refresh ~15s before expiry (with jitter)
+**Poster** — an image URL. It covers the player before the first frame plays,
+and comes back when playback ends or a fatal error occurs. Clicking it starts
+playback.
+
+**Logo** — a client watermark drawn over the video.
+
+| Option | Default | Notes |
+|--------|---------|-------|
+| `src` | — | Required; without it nothing is rendered |
+| `position` | `top-right` | `top-left` \| `top-right` \| `bottom-left` \| `bottom-right` |
+| `opacity` | `0.85` | Clamped to `0..1` |
+
+Height is fixed at 9% of the player (capped at 40% width) so the logo scales
+with the video, and it is click-through so it never blocks the controls. Top
+placements sit below the badge / quality row so the built-in chrome never covers
+the logo.
+
+```tsx
+<CastPlayer
+  /* … */
+  poster="https://cdn.example/poster.jpg"
+  logo={{ src: 'https://cdn.example/logo.png', position: 'bottom-right', opacity: 0.7 }}
+/>
 ```
+
+```html
+<cast-player
+  poster="https://cdn.example/poster.jpg"
+  logo-src="https://cdn.example/logo.png"
+  logo-position="bottom-right"
+  logo-opacity="0.7"
+></cast-player>
+```
+
+Not available in the vanilla `createCastPlayer` path — it does not own any DOM
+beyond the `<video>` you pass in.
 
 ---
 
@@ -400,30 +426,6 @@ sequenceDiagram
 - Never expose CastAPI JWT to the browser.
 - Validate the viewer on your server before calling CastAPI.
 - Only short-lived segment tokens reach the client.
-
----
-
-## Types (reference)
-
-Core access contract (all paths):
-
-```ts
-export const TYPES = { LIVE: 'live', VOD: 'vod' } as const;
-
-export type AccessTokenRequest = {
-  type: 'live' | 'vod';
-  streamId: string;
-  clientId: string;
-  viewerId: string;
-};
-
-export type AccessTokenDetails = {
-  token: string;
-  expiration: number; // unix seconds
-};
-
-export type GetAccessToken = (ctx: AccessTokenRequest) => Promise<AccessTokenDetails>;
-```
 
 Also exported from `@convay/cast-sdk` (see source / `.d.ts` for full shapes):
 `CastPlayerOptions`, `CastPlayerHandle`, `QualityLevel`, `CallbackTokenRefreshOptions`
